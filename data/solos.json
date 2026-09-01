@@ -325,7 +325,7 @@
       ],
       "youtubeId": "Cv9NSR-2DwM",
       "soloStart": 0,
-      "soloAt": 95,
+      "soloAt": 60,
       "audio": "/api/audio/moanin-lee-morgan.mp3",
       "leadIn": 0,
       "clipDuration": 40,
@@ -336,7 +336,7 @@
       "soloistRole": "Trumpet",
       "soloClip": {
         "audio": "/api/audio/moanin-lee-morgan--solo.mp3",
-        "start": 95,
+        "start": 60,
         "leadIn": 8,
         "clipDuration": 40
       }
@@ -434,15 +434,15 @@
           "role": "Piano"
         }
       ],
-      "youtubeId": "ylXk1LBvIqU",
-      "soloStart": 1.037,
+      "youtubeId": "zqNTltOGh5c",
+      "soloStart": 0,
       "soloAt": 92,
       "audio": "/api/audio/so-what-miles-davis.mp3",
-      "leadIn": 1.037,
+      "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 4169354,
-      "sourceDuration": 564,
+      "sourceDuration": 546.551,
       "soloist": "Miles Davis",
       "soloistRole": "Trumpet",
       "soloClip": {
@@ -813,7 +813,194 @@
       "sourceDuration": 438.393,
       "verified": true,
       "soloist": "Horace Silver",
-      "soloistRole": "Piano"
+      "soloistRole": "Piano",
+      "soloAt": 103,
+      "soloClip": {
+        "audio": "/api/audio/song-for-my-father-horace-silver--solo.mp3",
+        "start": 103,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
+    },
+    {
+      "id": "blue-in-green-miles-davis",
+      "catalog": "HZ-1522",
+      "artist": "Miles Davis",
+      "song": "Blue In Green",
+      "album": "Kind Of Blue",
+      "year": 1959,
+      "personnel": [
+        {
+          "name": "Bill Evans",
+          "role": "Piano"
+        },
+        {
+          "name": "Cannonball Adderley",
+          "role": "Alto Saxophone"
+        },
+        {
+          "name": "Jimmy Cobb",
+          "role": "Drums"
+        },
+        {
+          "name": "John Coltrane",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Miles Davis",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Paul Chambers",
+          "role": "Bass"
+        },
+        {
+          "name": "Wynton Kelly",
+          "role": "Piano"
+        }
+      ],
+      "soloist": "Miles Davis",
+      "soloistRole": "Trumpet",
+      "discogsReleaseId": 4169354,
+      "youtubeId": "TLDflhhdPCg",
+      "soloStart": 0.589,
+      "audio": "/api/audio/blue-in-green-miles-davis.mp3",
+      "leadIn": 0.589,
+      "clipDuration": 40,
+      "sourceDuration": 338.651,
+      "verified": true
+    },
+    {
+      "id": "all-blues-miles-davis",
+      "catalog": "HZ-1523",
+      "artist": "Miles Davis",
+      "song": "All Blues",
+      "album": "Kind Of Blue",
+      "year": 1959,
+      "personnel": [
+        {
+          "name": "Bill Evans",
+          "role": "Piano"
+        },
+        {
+          "name": "Cannonball Adderley",
+          "role": "Alto Saxophone"
+        },
+        {
+          "name": "Jimmy Cobb",
+          "role": "Drums"
+        },
+        {
+          "name": "John Coltrane",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Miles Davis",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Paul Chambers",
+          "role": "Bass"
+        },
+        {
+          "name": "Wynton Kelly",
+          "role": "Piano"
+        }
+      ],
+      "soloist": "Miles Davis",
+      "soloistRole": "Trumpet",
+      "discogsReleaseId": 4169354,
+      "youtubeId": "-488UORrfJ0",
+      "soloStart": 0.546,
+      "audio": "/api/audio/all-blues-miles-davis.mp3",
+      "leadIn": 0.546,
+      "clipDuration": 40,
+      "sourceDuration": 693.801,
+      "verified": true
+    },
+    {
+      "id": "flamenco-sketches-miles-davis",
+      "catalog": "HZ-1524",
+      "artist": "Miles Davis",
+      "song": "Flamenco Sketches",
+      "album": "Kind Of Blue",
+      "year": 1959,
+      "personnel": [
+        {
+          "name": "Bill Evans",
+          "role": "Piano"
+        },
+        {
+          "name": "Cannonball Adderley",
+          "role": "Alto Saxophone"
+        },
+        {
+          "name": "Jimmy Cobb",
+          "role": "Drums"
+        },
+        {
+          "name": "John Coltrane",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Miles Davis",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Paul Chambers",
+          "role": "Bass"
+        },
+        {
+          "name": "Wynton Kelly",
+          "role": "Piano"
+        }
+      ],
+      "soloist": "Miles Davis",
+      "soloistRole": "Trumpet",
+      "discogsReleaseId": 4169354,
+      "youtubeId": "nTwp1sgUJrM",
+      "soloStart": 0.5,
+      "audio": "/api/audio/flamenco-sketches-miles-davis.mp3",
+      "leadIn": 0.5,
+      "clipDuration": 40,
+      "sourceDuration": 566.811,
+      "verified": true
+    },
+    {
+      "id": "take-five-dave-brubeck",
+      "catalog": "HZ-1525",
+      "artist": "Dave Brubeck",
+      "song": "Take Five",
+      "album": "Time Out",
+      "year": 1959,
+      "personnel": [
+        {
+          "name": "Dave Brubeck",
+          "role": "Piano"
+        },
+        {
+          "name": "Eugene Wright",
+          "role": "Bass"
+        },
+        {
+          "name": "Joe Morello",
+          "role": "Drums"
+        },
+        {
+          "name": "Paul Desmond",
+          "role": "Alto Saxophone"
+        }
+      ],
+      "soloist": "Dave Brubeck",
+      "soloistRole": "Piano",
+      "discogsReleaseId": 25919815,
+      "youtubeId": "ryA6eHZNnXY",
+      "soloStart": 0,
+      "audio": "/api/audio/take-five-dave-brubeck.mp3",
+      "leadIn": 0,
+      "clipDuration": 40,
+      "sourceDuration": 324.133,
+      "verified": true
     }
   ]
 }

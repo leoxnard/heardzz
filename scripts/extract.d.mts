@@ -62,3 +62,13 @@ export function readLibrary(): Promise<{ version: number; solos: unknown[] }>;
 export function writeLibrary(library: { version: number; solos: unknown[] }): Promise<void>;
 export function nextCatalog(library: { solos: unknown[] }): string;
 export function upsertSolo<T>(solo: T): Promise<T>;
+
+/** One flat pass over a playlist index; carries no artist/track tags. */
+export interface PlaylistEntry {
+  youtubeId: string;
+  title: string;
+  duration: number;
+  uploader: string;
+}
+
+export function resolvePlaylist(target: string, limit?: number): Promise<PlaylistEntry[]>;

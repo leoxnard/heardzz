@@ -400,3 +400,48 @@ export async function upsertSolo(solo) {
   await writeLibrary(library);
   return solo;
 }
+
+/**
+ * List a playlist without downloading anything.
+ *
+ * `--flat-playlist` asks YouTube for the index page only, so one request
+ * covers the whole list instead of one per track. It carries less than a
+ * full resolve — no artist/track tags — which is why the caller still has
+ * to read the title. The cap is there because the list is unbounded and
+ * everything downstream of this costs a Discogs call.
+ */
+export async function resolvePlaylist(target, limit = 25) {
+  const { stdout } = await run(
+    "yt-dlp",
+    [
+      "--flat-playlist",
+      "--skip-download",
+      "--no-warnings",
+      "--playlist-end", String(limit),
+      "--print", "%(id)s\t%(title)s\t%(duration)s\t%(uploader)s",
+      target,
+    ],
+    { maxBuffer: 1024 * 1024 * 16 },
+  );
+
+  const entries = stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [id, title, duration, uploader] = line.split("\t");
+      return {
+        youtubeId: id,
+        title: title || "",
+        duration: Number(duration) || 0,
+        uploader: uploader && uploader !== "NA" ? uploader : "",
+      };
+    })
+    // Deleted and private entries stay in the index with an id but nothing
+    // playable behind them.
+    .filter((entry) => /^[A-Za-z0-9_-]{11}$/.test(entry.youtubeId)
+      && !/^\[(Private|Deleted) video\]$/i.test(entry.title));
+
+  if (!entries.length) throw new Error(`No videos found in "${target}"`);
+  return entries;
+}
