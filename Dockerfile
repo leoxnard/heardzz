@@ -46,11 +46,8 @@ COPY --from=build /app/scripts ./scripts
 # `npm run fetch-missing` rebuilds the clips into the volume.
 COPY --from=build /app/data/solos.json /app/seed-library/solos.json
 
-RUN mkdir -p /data/audio \
- && printf '%s\n' '#!/bin/sh' 'set -e' \
-      '[ -f /data/solos.json ] || cp /app/seed-library/solos.json /data/solos.json' \
-      'exec "$@"' > /usr/local/bin/entrypoint \
- && chmod +x /usr/local/bin/entrypoint
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint
+RUN chmod +x /usr/local/bin/entrypoint
 
 VOLUME ["/data"]
 EXPOSE 3000
