@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import Analytics from "@/components/Analytics";
 
 /* Archivo carries a real width axis, so the condensed display setting is the
    typeface's own design rather than a horizontally scaled fake. One family
@@ -34,7 +35,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${archivo.variable} ${plexMono.variable} h-full`}>
-      <body className="grain min-h-full bg-ink text-paper">{children}</body>
+      <body className="grain min-h-full bg-ink text-paper">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
