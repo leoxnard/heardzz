@@ -157,7 +157,7 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
 
   return (
     <>
-      <div className="border-b border-ink-edge p-4">
+      <div className="shrink-0 border-b border-ink-edge p-4">
         <button
           type="button"
           onClick={onAdd}
@@ -211,7 +211,7 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
         </div>
       </div>
 
-      <ul className="max-h-[70vh] overflow-y-auto lg:max-h-none">
+      <ul className="max-h-[70vh] flex-1 overflow-y-auto lg:max-h-none lg:min-h-0">
         {shown === 0 && (
           <li className="type-body p-6 text-sm text-paper-faint">
             {solos.length === 0

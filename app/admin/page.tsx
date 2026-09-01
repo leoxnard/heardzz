@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { LibraryAdmin } from "@/components/admin/LibraryAdmin";
 import { adminAvailable, isAdmin } from "@/lib/auth";
 import { loadSolos } from "@/lib/library";
+import { readReports } from "@/lib/reports";
 import { readSuggestions } from "@/lib/suggestions";
 import { AUDIO_DIR } from "@/lib/paths";
 
@@ -15,7 +16,11 @@ export default async function AdminPage() {
   if (!adminAvailable()) notFound();
   if (!(await isAdmin())) redirect("/login");
 
-  const [solos, { suggestions }] = await Promise.all([loadSolos(), readSuggestions()]);
+  const [solos, { suggestions }, { reports }] = await Promise.all([
+    loadSolos(),
+    readSuggestions(),
+    readReports(),
+  ]);
 
   // A fresh volume has the library but none of the audio it names.
   const missingAudio = solos.filter(
@@ -23,6 +28,11 @@ export default async function AdminPage() {
   ).length;
 
   return (
-    <LibraryAdmin initial={solos} suggestions={suggestions} missingAudio={missingAudio} />
+    <LibraryAdmin
+      initial={solos}
+      suggestions={suggestions}
+      reports={reports}
+      missingAudio={missingAudio}
+    />
   );
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { ReportPanel } from "./ReportPanel";
 import { Sleeve } from "./Sleeve";
 import { Board } from "./Board";
 import { Result } from "./Result";
@@ -58,7 +59,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
 
   const { index: practiceIndex, advance: nextPractice } = usePracticeIndex();
 
-  const [panel, setPanel] = useState<"settings" | "stats" | null>(null);
+  const [panel, setPanel] = useState<"settings" | "stats" | "report" | null>(null);
   const [inputs, setInputs] = useState<Partial<Record<Field, string>>>({});
 
   const level = levelOf(config);
@@ -427,6 +428,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
             onPlay={play}
             audioReady={audio.status === "ready"}
             audioFailed={audio.status === "error"}
+            onReport={() => setPanel("report")}
           />
         </section>
 
@@ -541,6 +543,9 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
           onReset={resetStats}
           onClose={() => setPanel(null)}
         />
+      )}
+      {panel === "report" && (
+        <ReportPanel soloId={solo.id} onClose={() => setPanel(null)} />
       )}
     </div>
   );

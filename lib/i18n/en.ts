@@ -53,6 +53,23 @@ export const en = {
     audioMissing: "This clip will not load",
     audioMissingHelp:
       "The file is not reachable from here. If this was just added, give it a moment; otherwise it needs fetching again in the library.",
+    reportLink: "Something wrong with this one?",
+  },
+
+  /* The player's side of a report — the button on the sleeve and the panel it opens. */
+  report: {
+    title: "Report a problem",
+    intro: "What's wrong with this record?",
+    kindAudio: "The clip doesn't play, or sounds wrong",
+    kindInfo: "The artist, title, or soloist is wrong",
+    kindOther: "Something else",
+    noteLabel: "Anything else worth saying (optional)",
+    notePlaceholder: "e.g. the clip cuts off early",
+    submit: "Send report",
+    sending: "Sending",
+    sent: "Thanks — this has been flagged for a look.",
+    error: "Could not send that. Try again in a moment.",
+    rateLimited: "You've sent a few of these already — give it a little while.",
   },
 
   board: {
@@ -288,6 +305,24 @@ export const en = {
     openVideo: "Watch on YouTube",
     tab: "Suggestions",
     tabLibrary: "Library",
+  },
+
+  /* The admin's side of a report — the review list. */
+  reports: {
+    tab: "Reports",
+    title: "Reports",
+    open: "{n} open",
+    none: "Nothing open.",
+    count: "reported {n} times",
+    kind: {
+      audio: "Audio",
+      info: "Wrong info",
+      other: "Other",
+    },
+    openRecord: "Open this record",
+    resolve: "Mark resolved",
+    resolving: "Saving",
+    reopen: "Reopen",
   },
 
   a11y: {

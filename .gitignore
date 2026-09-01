@@ -46,6 +46,7 @@ next-env.d.ts
 # `npm run fetch-missing` rebuilds them from it wherever it runs.
 /data/audio/
 /data/suggestions.json
+/data/reports.json
 
 # whole recordings, held only while one is being marked up
 data/sources/

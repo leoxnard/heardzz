@@ -32,11 +32,12 @@ interface SleeveProps {
   audioReady: boolean;
   /** The clip could not be loaded at all. */
   audioFailed: boolean;
+  onReport: () => void;
 }
 
 export function Sleeve({
   solo, ladderMs, rung, revealed, playing, progress, playheadMs, onPlay, audioReady,
-  audioFailed,
+  audioFailed, onReport,
 }: SleeveProps) {
   const unlocked = ladderMs[Math.min(rung, ladderMs.length - 1)];
   const amount = formatSnippet(unlocked).replace(" s", "");
@@ -115,6 +116,14 @@ export function Sleeve({
           current={Math.min(rung, ladderMs.length - 1)}
           playheadMs={playheadMs}
         />
+
+        <button
+          type="button"
+          onClick={onReport}
+          className="type-eyebrow text-paper-faint underline underline-offset-2 transition-colors hover:text-flame"
+        >
+          {t("round.reportLink")}
+        </button>
       </div>
     </div>
   );

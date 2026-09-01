@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LibraryList } from "./LibraryList";
+import { ReportsReview } from "./ReportsReview";
 import { SoloEditor } from "./SoloEditor";
 import { SourceWorkbench } from "./SourceWorkbench";
 import { SuggestionReview } from "./SuggestionReview";
 import { t } from "@/lib/i18n";
-import type { Solo, Suggestion } from "@/lib/types";
+import type { Report, Solo, Suggestion } from "@/lib/types";
 
 /* ------------------------------------------------------------------
    The library screen.
@@ -40,16 +41,19 @@ type Job =
 export function LibraryAdmin({
   initial,
   suggestions: initialSuggestions,
+  reports: initialReports,
   missingAudio,
 }: {
   initial: Solo[];
   suggestions: Suggestion[];
+  reports: Report[];
   missingAudio: number;
 }) {
   const router = useRouter();
   const [solos, setSolos] = useState(initial);
   const [suggestions, setSuggestions] = useState(initialSuggestions);
-  const [tab, setTab] = useState<"library" | "suggestions">(
+  const [reports, setReports] = useState(initialReports);
+  const [tab, setTab] = useState<"library" | "suggestions" | "reports">(
     initialSuggestions.some((s) => s.status === "pending") ? "suggestions" : "library",
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -61,6 +65,7 @@ export function LibraryAdmin({
 
   const unverified = solos.filter((solo) => !solo.verified).length;
   const waiting = suggestions.filter((s) => s.status === "pending").length;
+  const openReports = reports.filter((r) => r.status === "open").length;
   const [missing, setMissing] = useState(missingAudio);
   const [fetching, setFetching] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -296,30 +301,35 @@ export function LibraryAdmin({
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-ink-edge px-6 py-4 sm:px-10">
+    <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
+      <header className="shrink-0 flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-ink-edge px-6 py-4 sm:px-10">
         <Link href="/" className="flex items-center gap-3">
           <span className="block h-4 w-4 bg-flame" aria-hidden="true" />
           <span className="type-display text-xl text-paper">{t("brand")}</span>
         </Link>
         <nav className="flex gap-5">
-          {(["library", "suggestions"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTab(value)}
-              className={`type-eyebrow border-b-2 pb-[2px] transition-colors ${
-                tab === value
-                  ? "border-flame text-paper"
-                  : "border-transparent text-paper-dim hover:text-paper"
-              }`}
-            >
-              {value === "library" ? t("review.tabLibrary") : t("review.tab")}
-              {value === "suggestions" && waiting > 0 && (
-                <span className="ml-2 bg-flame px-[6px] py-[1px] text-ink">{waiting}</span>
-              )}
-            </button>
-          ))}
+          {(["library", "suggestions", "reports"] as const).map((value) => {
+            const badge = value === "suggestions" ? waiting : value === "reports" ? openReports : 0;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTab(value)}
+                className={`type-eyebrow border-b-2 pb-[2px] transition-colors ${
+                  tab === value
+                    ? "border-flame text-paper"
+                    : "border-transparent text-paper-dim hover:text-paper"
+                }`}
+              >
+                {value === "library"
+                  ? t("review.tabLibrary")
+                  : value === "suggestions"
+                    ? t("review.tab")
+                    : t("reports.tab")}
+                {badge > 0 && <span className="ml-2 bg-flame px-[6px] py-[1px] text-ink">{badge}</span>}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="ml-auto flex items-center gap-4">
@@ -344,7 +354,7 @@ export function LibraryAdmin({
       </header>
 
       {tab === "suggestions" && !job ? (
-        <main className="flex-1 p-6 sm:p-10">
+        <main className="flex-1 overflow-y-auto p-6 sm:p-10 lg:min-h-0">
           <div className="mx-auto w-full max-w-3xl">
             <SuggestionReview
               suggestions={suggestions}
@@ -357,10 +367,25 @@ export function LibraryAdmin({
             />
           </div>
         </main>
+      ) : tab === "reports" && !job ? (
+        <main className="flex-1 overflow-y-auto p-6 sm:p-10 lg:min-h-0">
+          <div className="mx-auto w-full max-w-3xl">
+            <ReportsReview
+              reports={reports}
+              onOpen={(soloId) => {
+                setSelectedId(soloId);
+                setTab("library");
+              }}
+              onResolved={(report) =>
+                setReports((current) => current.map((r) => (r.id === report.id ? report : r)))
+              }
+            />
+          </div>
+        </main>
       ) : (
 
-      <div className="grid flex-1 grid-cols-1 lg:grid-cols-[320px_1fr]">
-        <aside className="border-b border-ink-edge lg:border-b-0 lg:border-r">
+      <div className="grid flex-1 grid-cols-1 lg:grid-cols-[320px_1fr] lg:min-h-0">
+        <aside className="flex flex-col border-b border-ink-edge lg:border-b-0 lg:border-r lg:min-h-0 lg:overflow-hidden">
           <LibraryList
             solos={solos}
             selectedId={job ? null : (selected?.id ?? null)}
@@ -375,7 +400,7 @@ export function LibraryAdmin({
           />
         </aside>
 
-        <main className="p-6 sm:p-10">
+        <main className="p-6 sm:p-10 lg:overflow-y-auto">
           {missing > 0 && !job && (
             <div className="mb-8 border border-flame p-5">
               <p className="type-body text-sm text-paper">

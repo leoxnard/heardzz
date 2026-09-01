@@ -222,3 +222,37 @@ export interface SuggestionStore {
   version: number;
   suggestions: Suggestion[];
 }
+
+/* ------------------------------------------------------------------
+   Reports
+
+   A player's only way to talk back: the clip does not play, or the sleeve
+   says something that is not true. Both are worth knowing and neither is
+   worth a support inbox, so it is one button and three choices.
+   ------------------------------------------------------------------ */
+
+export type ReportKind = "audio" | "info" | "other";
+export type ReportStatus = "open" | "resolved";
+
+export interface Report {
+  id: string;
+  soloId: string;
+  /**
+   * Copied from the solo at the moment of the report, so the admin list
+   * reads on its own even if the entry is later edited or removed.
+   */
+  artist: string;
+  song: string;
+  catalog: string;
+  kind: ReportKind;
+  note?: string;
+  /** How many times this exact problem, on this exact record, came in. */
+  count: number;
+  submittedAt: string;
+  status: ReportStatus;
+}
+
+export interface ReportStore {
+  version: number;
+  reports: Report[];
+}
