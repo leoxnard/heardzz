@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { readLibrary, writeLibrary } from "@/scripts/extract.mjs";
-import { blockedInProduction } from "@/lib/admin-guard";
+import { requireAdmin } from "@/lib/admin-guard";
 import type { Solo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const blocked = blockedInProduction();
-  if (blocked) return blocked;
+  const denied = await requireAdmin();
+  if (denied) return denied;
 
   const library = await readLibrary();
   return NextResponse.json(library);
@@ -17,8 +17,8 @@ export async function GET() {
 
 /** Metadata, the solo entry point inside the clip, and the verified flag. */
 export async function PATCH(request: Request) {
-  const blocked = blockedInProduction();
-  if (blocked) return blocked;
+  const denied = await requireAdmin();
+  if (denied) return denied;
 
   const body = (await request.json()) as Partial<Solo> & { id?: string };
   if (!body.id) {
@@ -56,8 +56,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const blocked = blockedInProduction();
-  if (blocked) return blocked;
+  const denied = await requireAdmin();
+  if (denied) return denied;
 
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });

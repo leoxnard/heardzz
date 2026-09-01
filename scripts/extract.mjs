@@ -23,8 +23,17 @@ export const PRE_ROLL = 8;
 export const POST_ROLL = 32;
 export const CLIP_LENGTH = PRE_ROLL + POST_ROLL;
 
-export const AUDIO_DIR = path.join(process.cwd(), "public", "audio");
-export const LIBRARY_PATH = path.join(process.cwd(), "data", "solos.json");
+/**
+ * Everything written at runtime lives under one directory, outside the build,
+ * so a server can mount it as a volume and keep it across deploys.
+ */
+export const DATA_DIR = process.env.HEARDZZ_DATA_DIR
+  ? path.resolve(process.env.HEARDZZ_DATA_DIR)
+  : path.join(process.cwd(), "data");
+
+export const AUDIO_DIR = path.join(DATA_DIR, "audio");
+export const LIBRARY_PATH = path.join(DATA_DIR, "solos.json");
+export const SUGGESTIONS_PATH = path.join(DATA_DIR, "suggestions.json");
 
 export function slugify(value) {
   return value
@@ -225,7 +234,7 @@ export async function extractClip({ youtubeId, soloStart, outputId, onProgress }
     ]);
 
     return {
-      audio: `/audio/${outputId}.mp3`,
+      audio: `/api/audio/${outputId}.mp3`,
       soloStart: resolvedStart,
       leadIn,
       clipDuration: Number(Number(stdout.trim()).toFixed(3)),

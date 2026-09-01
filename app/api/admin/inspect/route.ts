@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { checkTools, resolveSource } from "@/scripts/extract.mjs";
 import { lookupByRelease, lookupByTrack } from "@/scripts/discogs.mjs";
 import { askGemini, geminiAvailable, parseTitle } from "@/scripts/metadata.mjs";
-import { blockedInProduction } from "@/lib/admin-guard";
+import { requireAdmin } from "@/lib/admin-guard";
 import type { Credit } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -30,8 +30,8 @@ export interface InspectResult {
 }
 
 export async function POST(request: Request) {
-  const blocked = blockedInProduction();
-  if (blocked) return blocked;
+  const denied = await requireAdmin();
+  if (denied) return denied;
 
   const body = (await request.json()) as InspectBody;
   if (!body.target?.trim()) {

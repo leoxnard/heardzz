@@ -4,7 +4,9 @@
 export const PRE_ROLL: number;
 export const POST_ROLL: number;
 export const CLIP_LENGTH: number;
+export const DATA_DIR: string;
 export const AUDIO_DIR: string;
+export const SUGGESTIONS_PATH: string;
 export const LIBRARY_PATH: string;
 
 export function slugify(value: string): string;

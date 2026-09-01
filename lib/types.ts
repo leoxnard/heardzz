@@ -124,3 +124,40 @@ export interface Stats {
   distribution: number[];
   lastPlayedDate: string | null;
 }
+
+/* ------------------------------------------------------------------
+   Suggestions
+
+   Anyone can put a record forward; only the owner turns one into a clip.
+   Nothing is downloaded until then, so a suggestion costs a few hundred
+   bytes and no bandwidth.
+   ------------------------------------------------------------------ */
+
+export type SuggestionStatus = "pending" | "approved" | "rejected";
+
+export interface Suggestion {
+  id: string;
+  youtubeId: string;
+  /** The video's own title, kept so the reviewer can see what was meant. */
+  sourceTitle: string;
+  sourceDuration: number;
+
+  artist: string;
+  song: string;
+  album: string;
+  year: number;
+  personnel: Credit[];
+  discogsReleaseId?: number;
+  note?: string;
+
+  /** ISO timestamp. */
+  submittedAt: string;
+  status: SuggestionStatus;
+  /** Filled in when a suggestion is turned down. */
+  reason?: string;
+}
+
+export interface SuggestionStore {
+  version: number;
+  suggestions: Suggestion[];
+}

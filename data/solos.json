@@ -37,7 +37,7 @@
       "youtubeId": "pXHdqTVC3cA",
       "soloStart": 5.166,
       "soloAt": 5.2,
-      "audio": "/audio/west-end-blues-louis-armstrong.mp3",
+      "audio": "/api/audio/west-end-blues-louis-armstrong.mp3",
       "leadIn": 5.166,
       "clipDuration": 40,
       "verified": true,
@@ -78,7 +78,7 @@
       "youtubeId": "okrNwE6GI70",
       "soloStart": 0.361,
       "soloAt": 26,
-      "audio": "/audio/ko-ko-charlie-parker.mp3",
+      "audio": "/api/audio/ko-ko-charlie-parker.mp3",
       "leadIn": 0.361,
       "clipDuration": 40,
       "verified": true,
@@ -119,7 +119,7 @@
       "youtubeId": "dnK6OHPQZbA",
       "soloStart": 0,
       "soloAt": 47,
-      "audio": "/audio/joy-spring-clifford-brown.mp3",
+      "audio": "/api/audio/joy-spring-clifford-brown.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
@@ -155,7 +155,7 @@
       "youtubeId": "fdakJqKPRDE",
       "soloStart": 0,
       "soloAt": 50,
-      "audio": "/audio/st-thomas-sonny-rollins.mp3",
+      "audio": "/api/audio/st-thomas-sonny-rollins.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
@@ -198,7 +198,7 @@
       "youtubeId": "HT_Zs5FKDZE",
       "soloStart": 0.978,
       "soloAt": 62,
-      "audio": "/audio/blue-train-john-coltrane.mp3",
+      "audio": "/api/audio/blue-train-john-coltrane.mp3",
       "leadIn": 0.978,
       "clipDuration": 40,
       "verified": true,
@@ -240,7 +240,7 @@
       "youtubeId": "CpB7-8SGlJ0",
       "soloStart": 1.08,
       "soloAt": 158,
-      "audio": "/audio/autumn-leaves-cannonball-adderley.mp3",
+      "audio": "/api/audio/autumn-leaves-cannonball-adderley.mp3",
       "leadIn": 1.08,
       "clipDuration": 40,
       "verified": true,
@@ -279,7 +279,7 @@
       "youtubeId": "Cv9NSR-2DwM",
       "soloStart": 0,
       "soloAt": 95,
-      "audio": "/audio/moanin-lee-morgan.mp3",
+      "audio": "/api/audio/moanin-lee-morgan.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
@@ -326,7 +326,7 @@
       "youtubeId": "ZZcuSBouhVA",
       "soloStart": 0.6,
       "soloAt": 30,
-      "audio": "/audio/freddie-freeloader-wynton-kelly.mp3",
+      "audio": "/api/audio/freddie-freeloader-wynton-kelly.mp3",
       "leadIn": 0.6,
       "clipDuration": 40,
       "verified": true,
@@ -374,7 +374,7 @@
       "youtubeId": "ylXk1LBvIqU",
       "soloStart": 1.037,
       "soloAt": 92,
-      "audio": "/audio/so-what-miles-davis.mp3",
+      "audio": "/api/audio/so-what-miles-davis.mp3",
       "leadIn": 1.037,
       "clipDuration": 40,
       "verified": true,
@@ -417,7 +417,7 @@
       "youtubeId": "xy_fxxj1mMY",
       "soloStart": 0,
       "soloAt": 10,
-      "audio": "/audio/giant-steps-john-coltrane.mp3",
+      "audio": "/api/audio/giant-steps-john-coltrane.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
@@ -453,7 +453,7 @@
       "youtubeId": "BqLDTKun4so",
       "soloStart": 0.34,
       "soloAt": 47,
-      "audio": "/audio/four-on-six-wes-montgomery.mp3",
+      "audio": "/api/audio/four-on-six-wes-montgomery.mp3",
       "leadIn": 0.34,
       "clipDuration": 40,
       "verified": true,
@@ -484,7 +484,7 @@
       "youtubeId": "rARGPAkIcw4",
       "soloStart": 0.544,
       "soloAt": 130,
-      "audio": "/audio/gloria-s-step-scott-lafaro.mp3",
+      "audio": "/api/audio/gloria-s-step-scott-lafaro.mp3",
       "leadIn": 0.544,
       "clipDuration": 40,
       "verified": true,
@@ -516,7 +516,7 @@
       "youtubeId": "PQmZctWwsCE",
       "soloStart": 0,
       "soloAt": 82,
-      "audio": "/audio/waltz-for-debby-bill-evans.mp3",
+      "audio": "/api/audio/waltz-for-debby-bill-evans.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
@@ -551,7 +551,7 @@
       "youtubeId": "hkyJQcmVtZQ",
       "soloStart": 1.119,
       "soloAt": 52,
-      "audio": "/audio/cheese-cake-dexter-gordon.mp3",
+      "audio": "/api/audio/cheese-cake-dexter-gordon.mp3",
       "leadIn": 1.119,
       "clipDuration": 40,
       "verified": true,
@@ -590,7 +590,7 @@
       "youtubeId": "O-rrt8IYhe0",
       "soloStart": 0,
       "soloAt": 84,
-      "audio": "/audio/footprints-wayne-shorter.mp3",
+      "audio": "/api/audio/footprints-wayne-shorter.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
@@ -625,12 +625,66 @@
       "youtubeId": "W5Ug0e_t4ew",
       "soloStart": 1.961,
       "soloAt": 108,
-      "audio": "/audio/cantaloupe-island-herbie-hancock.mp3",
+      "audio": "/api/audio/cantaloupe-island-herbie-hancock.mp3",
       "leadIn": 1.961,
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 1102285,
       "sourceDuration": 333
+    },
+    {
+      "id": "song-for-my-father-horace-silver",
+      "catalog": "HZ-1521",
+      "artist": "Horace Silver",
+      "song": "Song for My Father",
+      "album": "Song For My Father (Cantiga Para Meu Pai)",
+      "year": 1964,
+      "personnel": [
+        {
+          "name": "Blue Mitchell",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Carmell Jones",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Gene Taylor",
+          "role": "Bass"
+        },
+        {
+          "name": "Horace Silver",
+          "role": "Piano"
+        },
+        {
+          "name": "Joe Henderson",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Junior Cook",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Roger Humphries",
+          "role": "Drums"
+        },
+        {
+          "name": "Roy Brooks",
+          "role": "Drums"
+        },
+        {
+          "name": "Teddy Smith",
+          "role": "Bass"
+        }
+      ],
+      "discogsReleaseId": 27598200,
+      "youtubeId": "CWeXOm49kE0",
+      "soloStart": 1.176,
+      "audio": "/api/audio/song-for-my-father-horace-silver.mp3",
+      "leadIn": 1.176,
+      "clipDuration": 40,
+      "sourceDuration": 438.393,
+      "verified": true
     }
   ]
 }

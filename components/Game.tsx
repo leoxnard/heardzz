@@ -407,7 +407,7 @@ function Header({
       <nav className="flex gap-6">
         <NavLink href="/" active={mode === "daily"}>{t("nav.daily")}</NavLink>
         <NavLink href="/practice" active={mode === "practice"}>{t("nav.practice")}</NavLink>
-        <NavLink href="/admin" active={false}>{t("nav.admin")}</NavLink>
+        <NavLink href="/suggest" active={false}>{t("nav.suggest")}</NavLink>
       </nav>
 
       <div className="ml-auto flex items-center gap-5">
@@ -448,10 +448,10 @@ function EmptyState({ hasSolos }: { hasSolos: boolean }) {
             : t("library.empty")}
         </p>
         <Link
-          href="/admin"
+          href="/suggest"
           className="type-eyebrow mt-8 inline-block bg-flame px-5 py-3 text-ink transition-colors hover:bg-paper"
         >
-          {t("nav.admin")}
+          {t("nav.suggest")}
         </Link>
       </div>
     </div>

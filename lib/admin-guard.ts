@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
+import { adminAvailable, isAdmin } from "./auth";
 
 /**
- * The library screen writes to disk and shells out to yt-dlp. That is fine on
- * a laptop and unacceptable anywhere else, so it simply does not exist outside
- * development.
+ * Guard for everything that writes to the library or reaches the network on
+ * the server's behalf. Returns a response to send when the caller may not be
+ * here, and null when they may.
  */
-export function blockedInProduction(): NextResponse | null {
-  if (process.env.NODE_ENV === "production") {
+export async function requireAdmin(): Promise<NextResponse | null> {
+  if (!adminAvailable()) {
     return NextResponse.json({ error: "Not available" }, { status: 404 });
+  }
+  if (!(await isAdmin())) {
+    return NextResponse.json({ error: "Sign in first" }, { status: 401 });
   }
   return null;
 }
 
-export const isAdminEnabled = process.env.NODE_ENV !== "production";
+export { adminAvailable, adminUnavailableReason, isAdmin } from "./auth";

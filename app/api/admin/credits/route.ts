@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { lookupByRelease, lookupByTrack } from "@/scripts/discogs.mjs";
-import { blockedInProduction } from "@/lib/admin-guard";
+import { requireAdmin } from "@/lib/admin-guard";
 import type { Credit } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +12,8 @@ export const maxDuration = 120;
  * library screen decides whether to keep them.
  */
 export async function POST(request: Request) {
-  const blocked = blockedInProduction();
-  if (blocked) return blocked;
+  const denied = await requireAdmin();
+  if (denied) return denied;
 
   const body = (await request.json()) as {
     artist?: string;

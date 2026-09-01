@@ -10,7 +10,8 @@
     "add-track": "node scripts/add-track.mjs",
     "seed": "node scripts/seed.mjs",
     "retime": "node scripts/retime.mjs",
-    "personnel": "node scripts/personnel.mjs"
+    "personnel": "node scripts/personnel.mjs",
+    "fetch-missing": "node scripts/fetch-missing.mjs"
   },
   "dependencies": {
     "next": "16.3.4",

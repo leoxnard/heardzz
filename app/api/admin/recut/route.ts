@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkTools, extractClip, readLibrary, upsertSolo, parseTimecode } from "@/scripts/extract.mjs";
-import { blockedInProduction } from "@/lib/admin-guard";
+import { requireAdmin } from "@/lib/admin-guard";
 import type { Solo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +12,8 @@ export const maxDuration = 300;
  * which costs nothing.
  */
 export async function POST(request: Request) {
-  const blocked = blockedInProduction();
-  if (blocked) return blocked;
+  const denied = await requireAdmin();
+  if (denied) return denied;
 
   const body = (await request.json()) as { id: string; soloStart: string | number };
   if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 });

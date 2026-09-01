@@ -1,14 +1,28 @@
-import { notFound } from "next/navigation";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { notFound, redirect } from "next/navigation";
 import { LibraryAdmin } from "@/components/admin/LibraryAdmin";
-import { isAdminEnabled } from "@/lib/admin-guard";
+import { adminAvailable, isAdmin } from "@/lib/auth";
 import { loadSolos } from "@/lib/library";
+import { readSuggestions } from "@/lib/suggestions";
+import { AUDIO_DIR } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  // Writing to disk and shelling out to yt-dlp belongs on a laptop, nowhere else.
-  if (!isAdminEnabled) notFound();
+  // Without a password configured this screen does not exist, rather than
+  // existing and being open.
+  if (!adminAvailable()) notFound();
+  if (!(await isAdmin())) redirect("/login");
 
-  const solos = await loadSolos();
-  return <LibraryAdmin initial={solos} />;
+  const [solos, { suggestions }] = await Promise.all([loadSolos(), readSuggestions()]);
+
+  // A fresh volume has the library but none of the audio it names.
+  const missingAudio = solos.filter(
+    (solo) => !existsSync(path.join(AUDIO_DIR, `${solo.id}.mp3`)),
+  ).length;
+
+  return (
+    <LibraryAdmin initial={solos} suggestions={suggestions} missingAudio={missingAudio} />
+  );
 }

@@ -3,14 +3,15 @@
 Hear a fraction of a second of a jazz recording. Name the artist and the tune.
 Get it wrong and you are given more audio.
 
-Runs locally. There is no server component beyond the dev server, no database
-and no account.
-
 ```bash
 npm run dev
 ```
 
-Then open <http://localhost:3000>.
+Then open <http://localhost:3000>. No database and no accounts; the library is
+a JSON file and the clips are files beside it.
+
+Anyone can suggest a record. Confirming one is behind a password. See
+[Deploying](#deploying).
 
 ---
 
@@ -97,6 +98,21 @@ npm run retime -- --to opening   # and back again
 Both re-download the sources. Nothing is lost either way: moving to the opening
 records the solo time first.
 
+## Suggestions
+
+`/suggest` is public. Paste a YouTube link, check what comes back, send it. The
+suggestion is a few hundred bytes on disk — **nothing is downloaded**, because
+an open endpoint that fetches and re-encodes audio is a way to hand your server
+to whoever finds it.
+
+The download happens when you confirm the suggestion in **Library →
+Suggestions**, behind the password. Rejected and confirmed suggestions stay
+listed so the same record is not proposed twice.
+
+The public lookup still reaches YouTube and Discogs to fill the fields in, so
+it is rate limited per caller, and it will only read a YouTube video link —
+the id is extracted and the URL rebuilt from it, never passed on as typed.
+
 ## Adding records
 
 YouTube is the source of the file, not the player. A clip is downloaded and cut
@@ -172,6 +188,39 @@ ones out of play while you work through them.
 If a download starts failing across every player client, `yt-dlp` is behind a
 YouTube change. `brew upgrade yt-dlp` fixes it; the error message says so.
 
+## Deploying
+
+The included `Dockerfile` is the supported way, because the app shells out to
+`yt-dlp` and `ffmpeg`: a plain Node image builds fine and then fails the moment
+a record is confirmed.
+
+Three things to get right.
+
+**A password.** Set `ADMIN_PASSWORD`, ten characters or more. Without it the
+library screen and every route behind it return 404 — a deploy that forgets the
+variable is locked, never open. `/suggest` stays public either way.
+
+**A volume at `/data`.** Everything written at runtime lives there: the library
+file, the pending suggestions and the clips. Without a volume, confirming a
+record works until the next deploy and then the record is gone.
+`HEARDZZ_DATA_DIR` moves that directory if `/data` does not suit.
+
+**The clips.** The library definition is in the repository; the audio is not,
+so a fresh volume has the records and nothing to play. Open **Library** and
+press *Fetch the missing clips* — it cuts them one at a time and shows how many
+are left. From a shell, `npm run fetch-missing` does the same thing.
+
+A home connection is the right place for this. The downloads come from a
+residential address, which is the difference between yt-dlp working and being
+turned away as a data centre.
+
+| Variable | |
+| --- | --- |
+| `ADMIN_PASSWORD` | Required in production. Ten characters or more. |
+| `HEARDZZ_DATA_DIR` | Where the library, suggestions and clips live. `/data` in the image. |
+| `GEMINI_API_KEY` | Optional. Lets a model read awkward video titles. |
+| `DISCOGS_TOKEN` | Optional. Lifts Discogs' rate limit; nothing needs it. |
+
 ## Layout
 
 ```
@@ -185,9 +234,11 @@ lib/
   daily.ts      date to record, the practice order, repeat spacing
   lexicon/      ~280 artists and ~510 titles, plus matching
   i18n/         all interface copy
+  auth.ts       the one password, and the signed session cookie
+  paths.ts      where the library and clips live
 scripts/        extraction, Discogs, title parsing, CLI, seed, retime
 data/solos.json the library; written by the CLI and the Library screen
-public/audio/   the clips (git-ignored)
+data/audio/     the clips (git-ignored; a volume on a server)
 ```
 
 ### Adding a language
@@ -200,11 +251,12 @@ plus a switch for `DEFAULT_LOCALE`.
 
 ## A note on the audio
 
-The clips are excerpts of copyrighted recordings, held locally for private use.
-`public/audio/` is git-ignored so they are never committed, while
-`data/solos.json` is tracked — the library definition travels, the audio does
-not, and `npm run seed` rebuilds it.
+The clips are excerpts of copyrighted recordings. `data/audio/` is git-ignored
+so they are never committed, while `data/solos.json` is tracked — the library
+definition travels, the audio does not, and `npm run fetch-missing` rebuilds it
+wherever it runs.
 
-Putting these files on a public URL is distribution, which is a different thing
-legally from keeping them on your own machine. The `/admin` routes return 404
-outside development for the same reason.
+Serving them from a public address is distribution, which is a different thing
+legally from keeping them on your own machine. That does not change by putting
+a password on the library screen: the game itself, and every clip in it, is
+whatever your server is reachable as. Worth deciding deliberately.

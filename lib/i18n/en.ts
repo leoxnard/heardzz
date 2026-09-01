@@ -14,6 +14,7 @@ export const en = {
     stats: "Stats",
     settings: "Settings",
     admin: "Library",
+    suggest: "Suggest",
   },
 
   round: {
@@ -127,7 +128,11 @@ export const en = {
     saving: "Saving",
     delete: "Remove",
     deleteConfirm: "Remove {song} — {artist} from the library?",
-    empty: "The library is empty. Run npm run seed, or add a solo below.",
+    empty: "The library is empty. Run npm run seed, or add a record below.",
+    missingAudio:
+      "{n} records have no audio on this server. The library travels with the deploy; the clips do not, and have to be cut here.",
+    fetchAudio: "Fetch the missing clips",
+    fetchingAudio: "Fetching — {n} to go",
     sourcePreview: "Find the moment in the source",
     wholeRecording: "The whole recording",
     wholeRecordingHelp:
@@ -139,6 +144,49 @@ export const en = {
     importFailed: "Import failed",
     silentWarning:
       "There is no sound here. The marker is in a gap — move it, or re-cut from a time where the music actually starts.",
+  },
+
+  login: {
+    title: "Sign in",
+    intro: "The library screen is for whoever runs this. Everyone else can suggest a record.",
+    password: "Password",
+    signIn: "Sign in",
+    signingIn: "Signing in",
+    signOut: "Sign out",
+  },
+
+  suggest: {
+    title: "Suggest a record",
+    intro:
+      "Paste a YouTube link. The artist, tune, album, year and the band on the date are looked up for you — check them, then send it over.",
+    link: "YouTube link",
+    lookUp: "Look it up",
+    lookingUp: "Looking it up",
+    found: "What was found",
+    note: "Anything worth saying about it",
+    submit: "Send it over",
+    submitting: "Sending",
+    thanks: "Sent. It joins the library once it has been confirmed.",
+    another: "Suggest another",
+    badLink: "That is not a YouTube video link.",
+    alreadyHere: "That record is already in the library.",
+    alreadyPending: "That one is already waiting to be confirmed.",
+    nothingFound: "Nothing came back for that link. Fill the fields in yourself if you know them.",
+  },
+
+  review: {
+    title: "Suggestions",
+    pending: "{n} waiting",
+    none: "Nothing waiting.",
+    submitted: "Suggested {when}",
+    approve: "Confirm and add",
+    approving: "Downloading and cutting",
+    reject: "Turn down",
+    rejected: "Turned down",
+    approved: "Added to the library",
+    openVideo: "Watch on YouTube",
+    tab: "Suggestions",
+    tabLibrary: "Library",
   },
 
   a11y: {
