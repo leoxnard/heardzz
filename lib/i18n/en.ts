@@ -121,6 +121,24 @@ export const en = {
     allVerified: "Every timestamp confirmed.",
     filterAll: "All",
     filterUnverified: "Unverified",
+    searchPlaceholder: "Search artist, tune, soloist…",
+    showing: "{n} shown",
+    noMatch: "Nothing matches “{query}”.",
+    sortBy: "Sort",
+    groupBy: "Group",
+    sort: {
+      catalog: "Catalogue",
+      artist: "Artist",
+      song: "Tune",
+      year: "Year",
+      soloist: "Soloist",
+    },
+    group: {
+      none: "Flat",
+      recording: "By recording",
+      artist: "By artist",
+      verified: "By state",
+    },
     add: "Add a solo",
     search: "YouTube link",
     discogsLink: "Discogs link",
@@ -200,6 +218,10 @@ export const en = {
     saving: "Cutting the clips",
     saveHelp: "Cuts the opening plus {n} solo clips, then throws the recording away.",
     discard: "Discard the recording",
+    duplicate: "This one is already here",
+    duplicateHelp:
+      "Adding it again would leave two entries answering the same question with different clips. Open what is already there and mark that instead — the recording you just fetched is discarded either way.",
+    openExisting: "Open what is already there",
     remark: "Mark it again",
     remarkHelp:
       "Fetches the recording once more and opens it with the positions you already have.",
@@ -210,6 +232,8 @@ export const en = {
     playlist: "Playlist link",
     playlistLoad: "List the playlist",
     playlistLoading: "Reading the playlist",
+    playlistKnown: "{n} left out, already in the library",
+    playlistAllKnown: "Every record in that playlist is already in the library.",
   },
 
   login: {

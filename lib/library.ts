@@ -31,3 +31,33 @@ export async function loadSolos(): Promise<Solo[]> {
   const { solos } = await loadLibrary();
   return solos;
 }
+
+/** Same shape slugify produces, so the two agree on what one record is. */
+function slug(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/**
+ * Entries that are already this record.
+ *
+ * Two ways to be the same record and both of them count: the same upload, or
+ * the same tune by the same artist off a different upload. A record with
+ * three soloists returns three entries — that is one record, marked again,
+ * not three duplicates.
+ */
+export function findDuplicates(
+  solos: Solo[],
+  record: { youtubeId?: string; artist?: string; song?: string },
+): Solo[] {
+  const tune = record.artist && record.song ? slug(`${record.song}-${record.artist}`) : null;
+
+  return solos.filter((solo) => {
+    if (record.youtubeId && solo.youtubeId === record.youtubeId) return true;
+    return tune !== null && slug(`${solo.song}-${solo.artist}`) === tune;
+  });
+}

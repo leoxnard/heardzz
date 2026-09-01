@@ -351,10 +351,17 @@ export function SoloEditor({ solo, siblings, onRemark, onSaved, onDeleted }: Sol
         <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
           {t("library.soloistHelp")}
         </p>
+        {/* A native select ignores padding on macOS unless its own appearance
+            is dropped, which is why this one used to sit half the height of
+            every field around it. */}
         <select
           value={draft.soloist || draft.artist}
           onChange={(event) => field("soloist", event.target.value)}
-          className="type-body mt-4 w-full border border-ink-edge bg-ink-raised px-3 py-2 text-sm text-paper focus:border-flame focus:outline-none"
+          className="type-body mt-4 w-full appearance-none border border-ink-edge bg-ink-raised bg-[length:10px] bg-[right_1rem_center] bg-no-repeat px-3 py-3 pr-10 text-sm text-paper focus:border-flame focus:outline-none"
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath fill='%239c9382' d='M0 0h10L5 6z'/%3E%3C/svg%3E\")",
+          }}
         >
           {/* The leader is always offered, even when the credits omit them. */}
           {[

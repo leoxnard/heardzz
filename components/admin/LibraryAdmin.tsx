@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LibraryList } from "./LibraryList";
 import { SoloEditor } from "./SoloEditor";
 import { SourceWorkbench } from "./SourceWorkbench";
 import { SuggestionReview } from "./SuggestionReview";
@@ -30,7 +31,7 @@ type Job =
   /** A link, pasted by hand. */
   | { kind: "single" }
   /** A playlist, one record at a time. */
-  | { kind: "queue"; entries: PlaylistEntry[]; index: number }
+  | { kind: "queue"; entries: PlaylistEntry[]; index: number; known: number }
   /** Somebody's suggestion, marked up before it is accepted. */
   | { kind: "suggestion"; suggestion: Suggestion }
   /** A record already in the library, being marked again. */
@@ -50,9 +51,6 @@ export function LibraryAdmin({
   const [suggestions, setSuggestions] = useState(initialSuggestions);
   const [tab, setTab] = useState<"library" | "suggestions">(
     initialSuggestions.some((s) => s.status === "pending") ? "suggestions" : "library",
-  );
-  const [filter, setFilter] = useState<"all" | "unverified">(
-    initial.some((solo) => !solo.verified) ? "unverified" : "all",
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [job, setJob] = useState<Job | null>(initial.length === 0 ? { kind: "single" } : null);
@@ -88,16 +86,10 @@ export function LibraryAdmin({
     }
   }
 
-  // Unverified first: they are the reason to open this screen at all.
-  const visible = useMemo(() => {
-    const pool = filter === "unverified" ? solos.filter((s) => !s.verified) : solos;
-    return [...pool].sort((a, b) => {
-      if (a.verified !== b.verified) return a.verified ? 1 : -1;
-      return a.catalog.localeCompare(b.catalog);
-    });
-  }, [solos, filter]);
-
-  const selected = solos.find((solo) => solo.id === selectedId) ?? visible[0] ?? null;
+  const selected = useMemo(
+    () => solos.find((solo) => solo.id === selectedId) ?? null,
+    [solos, selectedId],
+  );
 
   function replace(updated: Solo) {
     setSolos((current) => {
@@ -127,13 +119,24 @@ export function LibraryAdmin({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not read that playlist");
-      setJob({ kind: "queue", entries: data.entries as PlaylistEntry[], index: 0 });
+      const entries = data.entries as PlaylistEntry[];
+      if (entries.length === 0) {
+        throw new Error(t("mark.playlistAllKnown", { n: data.known ?? 0 }));
+      }
+      setJob({ kind: "queue", entries, index: 0, known: data.known ?? 0 });
       setPlaylistTarget("");
     } catch (cause) {
       setPlaylistError(cause instanceof Error ? cause.message : "Could not read that playlist");
     } finally {
       setPlaylistBusy(false);
     }
+  }
+
+  /** Swap a fresh recording for the entries it would have duplicated. */
+  function openExisting(ids: string[]) {
+    const group = solos.filter((solo) => ids.includes(solo.id));
+    if (group.length === 0) return;
+    setJob({ kind: "remark", solos: group });
   }
 
   /** Next in the queue, or done. Skipping and saving both land here. */
@@ -156,6 +159,11 @@ export function LibraryAdmin({
           <div className="mb-6 flex flex-wrap items-baseline gap-x-4 border-b border-ink-edge pb-4">
             <h3 className="type-eyebrow text-flame">{t("mark.queueTitle")}</h3>
             <span className="type-data text-xs text-paper-faint">{entry.title}</span>
+            {job.known > 0 && (
+              <span className="type-data text-xs text-paper-faint">
+                {t("mark.playlistKnown", { n: job.known })}
+              </span>
+            )}
             <button
               type="button"
               onClick={advanceQueue}
@@ -173,6 +181,7 @@ export function LibraryAdmin({
               absorb(written, removed);
               advanceQueue();
             }}
+            onOpenExisting={openExisting}
             onCancel={advanceQueue}
           />
         </div>
@@ -213,6 +222,7 @@ export function LibraryAdmin({
             setSelectedId(written[0]?.id ?? null);
             setTab("library");
           }}
+          onOpenExisting={openExisting}
           onCancel={() => setJob(null)}
         />
       );
@@ -253,6 +263,7 @@ export function LibraryAdmin({
             setSelectedId(written[0]?.id ?? null);
             setJob(null);
           }}
+          onOpenExisting={openExisting}
           onCancel={solos.length > 0 ? () => setJob(null) : undefined}
         />
 
@@ -350,76 +361,18 @@ export function LibraryAdmin({
 
       <div className="grid flex-1 grid-cols-1 lg:grid-cols-[320px_1fr]">
         <aside className="border-b border-ink-edge lg:border-b-0 lg:border-r">
-          <div className="flex gap-2 border-b border-ink-edge p-4">
-            {(["unverified", "all"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setFilter(value)}
-                className={`type-eyebrow border px-3 py-2 transition-colors ${
-                  filter === value
-                    ? "border-flame bg-flame text-ink"
-                    : "border-ink-edge text-paper-dim hover:text-paper"
-                }`}
-              >
-                {value === "all" ? t("library.filterAll") : t("library.filterUnverified")}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => {
-                setJob({ kind: "single" });
-                setSelectedId(null);
-              }}
-              className="type-eyebrow ml-auto border border-ink-edge px-3 py-2 text-paper-dim transition-colors hover:border-flame hover:text-flame"
-            >
-              + {t("mark.add")}
-            </button>
-          </div>
-
-          <ul className="max-h-[70vh] overflow-y-auto lg:max-h-none">
-            {visible.length === 0 && (
-              <li className="type-body p-6 text-sm text-paper-faint">
-                {solos.length === 0 ? t("library.empty") : t("library.allVerified")}
-              </li>
-            )}
-            {visible.map((solo) => {
-              const active = selected?.id === solo.id && !job;
-              return (
-                <li key={solo.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedId(solo.id);
-                      setJob(null);
-                    }}
-                    className={`flex w-full items-start gap-3 border-b border-ink-edge px-4 py-3 text-left transition-colors ${
-                      active ? "bg-ink-raised" : "hover:bg-ink-raised"
-                    }`}
-                  >
-                    <span
-                      className={`mt-[6px] block h-2 w-2 shrink-0 ${
-                        solo.verified ? "bg-flame-deep" : "bg-flame"
-                      }`}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0">
-                      <span className="type-body block truncate text-sm text-paper">
-                        {solo.artist}
-                      </span>
-                      <span className="type-body block truncate text-xs text-paper-dim">
-                        {solo.song}
-                        {solo.soloist && solo.soloist !== solo.artist && ` · ${solo.soloist}`}
-                      </span>
-                      <span className="type-data mt-1 block text-[0.6rem] text-paper-faint">
-                        {solo.catalog}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <LibraryList
+            solos={solos}
+            selectedId={job ? null : (selected?.id ?? null)}
+            onSelect={(solo) => {
+              setSelectedId(solo.id);
+              setJob(null);
+            }}
+            onAdd={() => {
+              setJob({ kind: "single" });
+              setSelectedId(null);
+            }}
+          />
         </aside>
 
         <main className="p-6 sm:p-10">

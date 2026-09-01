@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkTools, resolvePlaylist } from "@/scripts/extract.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
+import { findDuplicates, loadSolos } from "@/lib/library";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -25,11 +26,19 @@ export async function POST(request: Request) {
 
   try {
     await checkTools();
-    const entries = await resolvePlaylist(body.target.trim(), LIMIT);
-    if (entries.length === 0) {
+    const all = await resolvePlaylist(body.target.trim(), LIMIT);
+    if (all.length === 0) {
       return NextResponse.json({ error: "That playlist has nothing playable in it" }, { status: 400 });
     }
-    return NextResponse.json({ entries });
+
+    // A playlist is usually run more than once, and the half of it already in
+    // the library is not worth fetching again to be refused at the end.
+    const solos = await loadSolos();
+    const entries = all.filter(
+      (entry) => findDuplicates(solos, { youtubeId: entry.youtubeId }).length === 0,
+    );
+
+    return NextResponse.json({ entries, known: all.length - entries.length });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not read that playlist" },

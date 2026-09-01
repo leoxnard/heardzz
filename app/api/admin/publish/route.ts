@@ -5,6 +5,7 @@ import {
   checkTools, cutFromSource, dropSource, nextCatalog, readLibrary, slugify, writeLibrary,
 } from "@/scripts/extract.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
+import { findDuplicates } from "@/lib/library";
 import { AUDIO_DIR } from "@/lib/paths";
 import { resolveSoloist } from "@/lib/soloist";
 import type { Credit, MarkedSolo, Solo } from "@/lib/types";
@@ -68,6 +69,25 @@ export async function POST(request: Request) {
     const library = await readLibrary();
     const solos = library.solos as Solo[];
     const replaces = new Set(body.replaces ?? []);
+
+    // Adding the same record twice leaves two entries that answer the same
+    // question with two different clips, and nothing downstream can tell them
+    // apart. Re-marking one is not that: it names what it replaces.
+    const clashes = findDuplicates(solos, { youtubeId: body.youtubeId, artist, song })
+      .filter((solo) => !replaces.has(solo.id));
+    if (clashes.length > 0) {
+      const [first] = clashes;
+      return NextResponse.json(
+        {
+          error:
+            `"${first.song}" by ${first.artist} is already in the library ` +
+            `(${clashes.map((solo) => solo.catalog).join(", ")}). ` +
+            `Open it and mark it again rather than adding it twice.`,
+          duplicates: clashes.map((solo) => solo.id),
+        },
+        { status: 409 },
+      );
+    }
 
     // The head is one clip however many people solo on the record, so it is
     // cut once and every entry points at the same file.

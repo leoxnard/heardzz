@@ -50,6 +50,8 @@ interface SourceWorkbenchProps {
   /** "2 still to mark", when working through a playlist. */
   queueNote?: string;
   saveLabel?: string;
+  /** Open the entries this recording would duplicate, to mark them again. */
+  onOpenExisting?: (ids: string[]) => void;
 }
 
 interface Draft {
@@ -79,7 +81,7 @@ function timecode(seconds: number): string {
 }
 
 export function SourceWorkbench({
-  seed, existing, onSaved, onCancel, queueNote, saveLabel,
+  seed, existing, onSaved, onCancel, queueNote, saveLabel, onOpenExisting,
 }: SourceWorkbenchProps) {
   const [target, setTarget] = useState(seed?.target ?? seed?.youtubeId ?? "");
   const [discogs, setDiscogs] = useState("");
@@ -112,6 +114,10 @@ export function SourceWorkbench({
   }, [audio.isPlaying, audio.progress, playedFrom, playedLength]);
 
   const duration = source?.duration ?? 0;
+
+  // Marking a record again is the one case where finding it in the library is
+  // the point rather than a mistake.
+  const duplicates = existing ? [] : (source?.duplicates ?? []);
 
   /* ---------------- fetching ---------------- */
 
@@ -414,6 +420,34 @@ export function SourceWorkbench({
         {queueNote && <span className="type-data text-xs text-paper-faint">{queueNote}</span>}
       </div>
 
+      {duplicates.length > 0 && (
+        <div className="mt-6 border border-flame p-5">
+          <h3 className="type-eyebrow text-flame">{t("mark.duplicate")}</h3>
+          <ul className="mt-3 space-y-1">
+            {duplicates.map((entry) => (
+              <li key={entry.id} className="type-body text-sm text-paper">
+                {entry.artist} — {entry.song}
+                {entry.soloist && entry.soloist !== entry.artist && (
+                  <span className="text-paper-dim"> · {entry.soloist}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="type-body mt-3 text-xs leading-relaxed text-paper-faint">
+            {t("mark.duplicateHelp")}
+          </p>
+          {onOpenExisting && (
+            <button
+              type="button"
+              onClick={() => onOpenExisting(duplicates.map((entry) => entry.id))}
+              className="type-eyebrow mt-4 bg-flame px-5 py-3 text-ink transition-colors hover:bg-paper"
+            >
+              {t("mark.openExisting")}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="mt-8">
         <TrackMarker
           buffer={audio.buffer}
@@ -603,7 +637,12 @@ export function SourceWorkbench({
         <button
           type="button"
           onClick={save}
-          disabled={busy !== null || !draft.artist.trim() || !draft.song.trim()}
+          disabled={
+            busy !== null
+            || duplicates.length > 0
+            || !draft.artist.trim()
+            || !draft.song.trim()
+          }
           className="type-eyebrow bg-flame px-6 py-4 text-ink transition-colors hover:bg-paper disabled:opacity-40"
         >
           {busy === "saving" ? t("mark.saving") : saveLabel ?? t("mark.save")}

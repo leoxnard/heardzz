@@ -4,10 +4,19 @@ import {
 } from "@/scripts/extract.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
 import { inspectSource, type InspectResult } from "@/lib/inspect";
+import { findDuplicates, loadSolos } from "@/lib/library";
 
 export const dynamic = "force-dynamic";
 /** Fetching a whole recording is a download, not a request. */
 export const maxDuration = 300;
+
+/** An entry this recording would duplicate, named so the screen can say so. */
+export interface DuplicateEntry {
+  id: string;
+  artist: string;
+  song: string;
+  soloist: string;
+}
 
 export interface SourceResult extends InspectResult {
   /** What the browser plays and draws while the solos are being marked. */
@@ -16,6 +25,11 @@ export interface SourceResult extends InspectResult {
   duration: number;
   /** Where the music starts — the opening marker, placed for you. */
   audibleStart: number;
+  /**
+   * Entries this record already has. Empty nearly always; when it is not,
+   * the screen says so before a minute is spent marking something twice.
+   */
+  duplicates: DuplicateEntry[];
 }
 
 /**
@@ -53,8 +67,20 @@ export async function POST(request: Request) {
       inspectSource(source, body.discogs),
     ]);
 
+    const duplicates = findDuplicates(await loadSolos(), {
+      youtubeId: source.youtubeId,
+      artist: inspected.artist,
+      song: inspected.song,
+    });
+
     const result: SourceResult = {
       ...inspected,
+      duplicates: duplicates.map((solo) => ({
+        id: solo.id,
+        artist: solo.artist,
+        song: solo.song,
+        soloist: solo.soloist,
+      })),
       previewUrl: held.previewUrl,
       duration: held.duration || inspected.sourceDuration,
       audibleStart: held.audibleStart,
