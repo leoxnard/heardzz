@@ -265,13 +265,8 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
             playheadMs={playheadMs}
             onPlay={play}
             audioReady={audio.status === "ready"}
+            audioFailed={audio.status === "error"}
           />
-          {audio.status === "error" && (
-            <p className="type-body px-6 pb-6 text-sm text-flame sm:px-10 lg:px-14">
-              Audio for {solo.catalog} could not be loaded. The file may be missing from
-              public{solo.audio} — re-run it through the library screen.
-            </p>
-          )}
         </section>
 
         <section className="p-6 sm:p-10 lg:p-14">

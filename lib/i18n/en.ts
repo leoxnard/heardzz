@@ -37,6 +37,9 @@ export const en = {
     keysHintRevealed: "Space plays it",
     keysHintNext: "Space plays · Enter starts the next one",
     lockedField: "Already found",
+    audioMissing: "This clip will not load",
+    audioMissingHelp:
+      "The file is not reachable from here. If this was just added, give it a moment; otherwise it needs fetching again in the library.",
   },
 
   board: {

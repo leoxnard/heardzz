@@ -30,10 +30,13 @@ interface SleeveProps {
   playheadMs: number | null;
   onPlay: () => void;
   audioReady: boolean;
+  /** The clip could not be loaded at all. */
+  audioFailed: boolean;
 }
 
 export function Sleeve({
   solo, ladderMs, rung, revealed, playing, progress, playheadMs, onPlay, audioReady,
+  audioFailed,
 }: SleeveProps) {
   const unlocked = ladderMs[Math.min(rung, ladderMs.length - 1)];
   const amount = formatSnippet(unlocked).replace(" s", "");
@@ -96,6 +99,16 @@ export function Sleeve({
               : t("round.unlocked", { ms: formatSnippet(unlocked) })
           }
         />
+
+        {/* Beside the control it disables, not somewhere below the fold. */}
+        {audioFailed && (
+          <div className="border-l-2 border-flame pl-4">
+            <p className="type-eyebrow text-flame">{t("round.audioMissing")}</p>
+            <p className="type-body mt-2 text-sm text-paper-dim">
+              {t("round.audioMissingHelp")}
+            </p>
+          </div>
+        )}
 
         <BandStrip
           ladderMs={ladderMs}
