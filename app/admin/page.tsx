@@ -1,12 +1,10 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { notFound, redirect } from "next/navigation";
 import { LibraryAdmin } from "@/components/admin/LibraryAdmin";
+import { missingAudioTargets } from "@/scripts/extract.mjs";
 import { adminAvailable, isAdmin } from "@/lib/auth";
 import { loadSolos } from "@/lib/library";
 import { readReports } from "@/lib/reports";
 import { readSuggestions } from "@/lib/suggestions";
-import { AUDIO_DIR } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +20,10 @@ export default async function AdminPage() {
     readReports(),
   ]);
 
-  // A fresh volume has the library but none of the audio it names.
-  const missingAudio = solos.filter(
-    (solo) => !existsSync(path.join(AUDIO_DIR, `${solo.id}.mp3`)),
-  ).length;
+  // A fresh volume has the library but none of the audio it names. Counted
+  // by file rather than by entry, so a record's shared head clip is one
+  // thing missing, not one per soloist on it.
+  const missingAudio = missingAudioTargets(solos).length;
 
   return (
     <LibraryAdmin

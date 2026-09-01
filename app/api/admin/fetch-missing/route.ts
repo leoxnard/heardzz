@@ -1,7 +1,7 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import { checkTools, extractClip, readLibrary, upsertSolo, AUDIO_DIR } from "@/scripts/extract.mjs";
+import {
+  applyClipToLibrary, checkTools, extractClip, missingAudioTargets, readLibrary,
+} from "@/scripts/extract.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
 import type { Solo } from "@/lib/types";
 
@@ -9,56 +9,56 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /**
- * Fetch one missing clip.
+ * Fetch one missing clip file.
  *
  * The library file travels with the deploy; the audio it names does not, so
- * a fresh volume starts with seventeen records and nothing to play. One clip
- * per request rather than all of them: seventeen downloads is minutes of
- * work, longer than any sensible request timeout, and doing them one at a
- * time lets the screen show progress instead of hanging.
+ * a fresh volume starts with every record and nothing to play. One file per
+ * request rather than all of them: dozens of downloads is minutes of work,
+ * longer than any sensible request timeout, and doing them one at a time
+ * lets the screen show progress instead of hanging.
+ *
+ * "One file" and "one record" are not the same count — a record with three
+ * soloists shares one head clip across three entries, so missing targets are
+ * counted and fetched by file, and settle every entry that names one in a
+ * single pass.
  */
 export async function POST() {
   const denied = await requireAdmin();
   if (denied) return denied;
 
   const library = await readLibrary();
-  const missing = (library.solos as Solo[]).filter(
-    (solo) => !existsSync(path.join(AUDIO_DIR, `${solo.id}.mp3`)),
-  );
+  const missing = missingAudioTargets(library.solos as Solo[]);
 
   if (missing.length === 0) {
     return NextResponse.json({ done: true, remaining: 0 });
   }
 
+  const target = missing[0];
+  const named = (library.solos as Solo[]).find(
+    (solo) => solo.youtubeId === target.youtubeId,
+  );
+
   try {
     await checkTools();
-    const solo = missing[0];
 
     const clip = await extractClip({
-      youtubeId: solo.youtubeId,
-      soloStart: solo.soloStart ?? "opening",
-      outputId: solo.id,
+      youtubeId: target.youtubeId,
+      soloStart: target.start,
+      outputId: target.outputId,
     });
-
-    await upsertSolo({
-      ...solo,
-      audio: clip.audio,
-      leadIn: clip.leadIn,
-      clipDuration: clip.clipDuration,
-      sourceDuration: clip.sourceDuration,
-    });
+    await applyClipToLibrary(target.outputId, clip);
 
     return NextResponse.json({
       done: missing.length === 1,
       remaining: missing.length - 1,
-      fetched: `${solo.artist} — ${solo.song}`,
+      fetched: named ? `${named.artist} — ${named.song}` : target.outputId,
     });
   } catch (error) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Could not fetch it",
         remaining: missing.length,
-        failed: `${missing[0].artist} — ${missing[0].song}`,
+        failed: named ? `${named.artist} — ${named.song}` : target.outputId,
       },
       { status: 500 },
     );

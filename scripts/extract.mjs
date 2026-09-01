@@ -500,6 +500,77 @@ export function nextCatalog(library) {
   return `HZ-${next}`;
 }
 
+/**
+ * What each solo names as its clip and, when the file is missing, what it
+ * takes to cut it again.
+ *
+ * The name on a solo's `audio` field is the source of truth for where its
+ * clip lives — not the solo's own id, which only matches for the entry that
+ * opened the record. A record with three soloists shares one head clip
+ * across three different ids, so deriving the target from the id would ask
+ * for a file that was never written and, worse, would cut three duplicates
+ * of the same clip if asked to repair it. Collapsing on the audio path
+ * instead means a shared clip is one thing to check and one thing to fetch,
+ * however many entries point at it.
+ */
+export function audioTargets(solos) {
+  const targets = new Map();
+  const add = (audioUrl, youtubeId, start) => {
+    if (!audioUrl) return;
+    const outputId = path.basename(audioUrl).replace(/\.mp3$/, "");
+    if (!targets.has(outputId)) targets.set(outputId, { outputId, youtubeId, start });
+  };
+  for (const solo of solos) {
+    add(solo.audio, solo.youtubeId, solo.soloStart);
+    if (solo.soloClip) add(solo.soloClip.audio, solo.youtubeId, solo.soloClip.start);
+  }
+  return [...targets.values()];
+}
+
+/** Audio targets whose file is not actually on disk. */
+export function missingAudioTargets(solos) {
+  return audioTargets(solos).filter(
+    (target) => !existsSync(path.join(AUDIO_DIR, `${target.outputId}.mp3`)),
+  );
+}
+
+/**
+ * Write a freshly cut clip's numbers onto every solo that names it.
+ *
+ * One extraction can settle more than one entry — the shared head clip on a
+ * multi-solo record — so this updates the library in one pass rather than
+ * one upsert per solo.
+ */
+export async function applyClipToLibrary(outputId, clip) {
+  const library = await readLibrary();
+  let touched = 0;
+
+  for (const solo of library.solos) {
+    if (solo.audio && path.basename(solo.audio).replace(/\.mp3$/, "") === outputId) {
+      solo.audio = clip.audio;
+      solo.leadIn = clip.leadIn;
+      solo.clipDuration = clip.clipDuration;
+      solo.sourceDuration = clip.sourceDuration;
+      touched += 1;
+    }
+    if (
+      solo.soloClip &&
+      path.basename(solo.soloClip.audio).replace(/\.mp3$/, "") === outputId
+    ) {
+      solo.soloClip = {
+        ...solo.soloClip,
+        audio: clip.audio,
+        leadIn: clip.leadIn,
+        clipDuration: clip.clipDuration,
+      };
+      touched += 1;
+    }
+  }
+
+  if (touched > 0) await writeLibrary(library);
+  return touched;
+}
+
 export async function upsertSolo(solo) {
   const library = await readLibrary();
   const idx = library.solos.findIndex((s) => s.id === solo.id);

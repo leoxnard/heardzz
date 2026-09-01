@@ -99,6 +99,23 @@ export function writeLibrary(library: { version: number; solos: unknown[] }): Pr
 export function nextCatalog(library: { solos: unknown[] }): string;
 export function upsertSolo<T>(solo: T): Promise<T>;
 
+export interface AudioTarget {
+  /** Filename stem — the clip lives at `${outputId}.mp3` in AUDIO_DIR. */
+  outputId: string;
+  youtubeId: string;
+  /** Where to cut from, in seconds, or "opening" for the head clip's fallback. */
+  start: number | "opening";
+}
+
+/** Every clip file the library names, one entry per distinct file. */
+export function audioTargets(solos: { audio?: string; soloClip?: { audio: string; start: number }; youtubeId: string; soloStart: number }[]): AudioTarget[];
+
+/** Audio targets whose file is not actually on disk. */
+export function missingAudioTargets(solos: Parameters<typeof audioTargets>[0]): AudioTarget[];
+
+/** Write a freshly cut clip's numbers onto every solo entry that names it. Returns how many were touched. */
+export function applyClipToLibrary(outputId: string, clip: CutClip): Promise<number>;
+
 /** One flat pass over a playlist index; carries no artist/track tags. */
 export interface PlaylistEntry {
   youtubeId: string;
