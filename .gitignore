@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Extracted audio.
+# The clips are excerpts of copyrighted recordings; they stay on this machine.
+# data/solos.json is tracked, so `npm run seed` can rebuild the audio from it.
+/public/audio/*
+!/public/audio/.gitkeep

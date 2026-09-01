@@ -1,26 +1,137 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ------------------------------------------------------------------
+   HEARDZZ — design tokens
+   Reference: Reid Miles' Blue Note sleeves, 1956–1967.
+   Flat colour only. No gradients, no blur, no soft shadows anywhere.
+   ------------------------------------------------------------------ */
+@theme {
+  /* Ground: warm black, never #000. Blue Note board stock read brown-black. */
+  --color-ink: #0d0c0a;
+  --color-ink-raised: #16140f;
+  --color-ink-edge: #24211a;
+
+  /* Cream, as aged sleeve paper rather than white. */
+  --color-paper: #ede6d8;
+  --color-paper-dim: #9c9382;
+  --color-paper-faint: #5b5548;
+
+  /* The single accent. Vermilion, as used on BLP 1568 and its neighbours. */
+  --color-flame: #e8471f;
+  --color-flame-deep: #a82f11;
+
+  --font-display: var(--font-archivo), "Helvetica Neue", Helvetica, sans-serif;
+  --font-body: var(--font-archivo), "Helvetica Neue", Helvetica, sans-serif;
+  --font-data: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Hard edges throughout. Kept as a token so it can never drift. */
+  --radius-none: 0px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@layer base {
+  * {
+    border-radius: 0;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  html {
+    background: var(--color-ink);
+    color: var(--color-paper);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: var(--font-body);
+    font-variation-settings: "wdth" 100;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: var(--color-flame);
+    color: var(--color-ink);
+  }
+
+  /* Keyboard focus must stay loud — it is part of the visual language here. */
+  :focus-visible {
+    outline: 2px solid var(--color-flame);
+    outline-offset: 2px;
+  }
+
+  input {
+    font-family: inherit;
+  }
+
+  input::placeholder {
+    color: var(--color-paper-faint);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* Display setting: condensed grotesque caps, tracked tight to negative.
+     The width axis is what makes this read as Franklin Gothic rather than
+     as a default sans squeezed with transform: scaleX. */
+  .type-display {
+    font-family: var(--font-display);
+    font-variation-settings: "wdth" 68;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+    line-height: 0.82;
+  }
+
+  .type-display-tight {
+    font-family: var(--font-display);
+    font-variation-settings: "wdth" 62;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.035em;
+    line-height: 0.78;
+  }
+
+  /* Small caps label: the counterweight to the giant display type. */
+  .type-eyebrow {
+    font-family: var(--font-display);
+    font-variation-settings: "wdth" 100;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+  }
+
+  .type-data {
+    font-family: var(--font-data);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .type-body {
+    font-family: var(--font-body);
+    font-variation-settings: "wdth" 100;
+    line-height: 1.5;
+  }
+}
+
+/* Film grain. Fixed to the viewport so it behaves like stock texture rather
+   than something painted onto the scrolling content. */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0.14;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

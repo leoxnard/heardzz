@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "add-track": "node scripts/add-track.mjs",
+    "seed": "node scripts/seed.mjs",
+    "retime": "node scripts/retime.mjs"
   },
   "dependencies": {
     "next": "16.3.4",
