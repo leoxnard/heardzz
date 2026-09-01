@@ -3,6 +3,7 @@ import {
   checkTools, extractClip, nextCatalog, readLibrary, slugify, upsertSolo,
 } from "@/scripts/extract.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
+import { resolveSoloist } from "@/lib/soloist";
 import { readSuggestions, updateSuggestion } from "@/lib/suggestions";
 import type { Solo } from "@/lib/types";
 
@@ -62,6 +63,9 @@ export async function PATCH(request: Request) {
     const library = await readLibrary();
     const existing = (library.solos as Solo[]).find((solo) => solo.id === id);
 
+    const personnel = merged.personnel ?? [];
+    const soloist = resolveSoloist(merged.soloist, merged.artist, personnel);
+
     const solo: Solo = {
       id,
       catalog: existing?.catalog ?? nextCatalog(library),
@@ -69,7 +73,8 @@ export async function PATCH(request: Request) {
       song: merged.song,
       album: merged.album ?? "",
       year: Number(merged.year) || 0,
-      personnel: merged.personnel ?? [],
+      personnel,
+      ...soloist,
       discogsReleaseId: merged.discogsReleaseId,
       youtubeId: suggestion.youtubeId,
       soloStart: clip.soloStart,

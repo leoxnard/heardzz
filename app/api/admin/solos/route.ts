@@ -3,6 +3,7 @@ import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { readLibrary, writeLibrary } from "@/scripts/extract.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
+import { resolveSoloist } from "@/lib/soloist";
 import type { Solo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -43,11 +44,15 @@ export async function PATCH(request: Request) {
     body.leadIn = Number(clamped.toFixed(3));
   }
 
+  const merged = { ...current, ...body };
+
   const updated: Solo = {
-    ...current,
-    ...body,
+    ...merged,
     id: current.id,
     soloStart: Number(soloStart.toFixed(3)),
+    // Re-settled on every save, so the instrument follows the name and the
+    // stored spelling always matches the one in the credits.
+    ...resolveSoloist(merged.soloist, merged.artist, merged.personnel),
   };
 
   solos[index] = updated;

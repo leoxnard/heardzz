@@ -1,19 +1,21 @@
 "use client";
 
 import { Overlay } from "./Overlay";
+import { formatSnippet } from "@/lib/audio";
 import { t } from "@/lib/i18n";
 import type { Stats } from "@/lib/types";
 
 interface StatsPanelProps {
   stats: Stats;
-  ladderLength: number;
+  /** The rungs themselves, because the distribution counts seconds heard. */
+  ladderMs: number[];
   onReset: () => void;
   onClose: () => void;
 }
 
-export function StatsPanel({ stats, ladderLength, onReset, onClose }: StatsPanelProps) {
+export function StatsPanel({ stats, ladderMs, onReset, onClose }: StatsPanelProps) {
   const winRate = stats.played === 0 ? 0 : Math.round((stats.won / stats.played) * 100);
-  const rows = Array.from({ length: ladderLength }, (_, i) => stats.distribution[i] ?? 0);
+  const rows = ladderMs.map((_, i) => stats.distribution[i] ?? 0);
   const peak = Math.max(1, ...rows);
 
   return (
@@ -34,8 +36,8 @@ export function StatsPanel({ stats, ladderLength, onReset, onClose }: StatsPanel
             <ul className="mt-4 space-y-2">
               {rows.map((count, i) => (
                 <li key={i} className="flex items-center gap-3">
-                  <span className="type-data w-7 text-xs text-paper-faint">
-                    {String(i + 1).padStart(2, "0")}
+                  <span className="type-data w-12 text-right text-xs text-paper-faint">
+                    {formatSnippet(ladderMs[i])}
                   </span>
                   <div className="h-6 flex-1 bg-ink-raised">
                     {/* Padding gives a zero-width bar a visible stub, so an

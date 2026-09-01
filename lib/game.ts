@@ -1,5 +1,5 @@
-import type { Attempt, RoundState, Solo, Stats } from "./types";
-import type { GameConfig } from "./config";
+import type { Attempt, Field, RoundState, Solo, Stats } from "./types";
+import { activeFields, type GameConfig } from "./config";
 import { artistMatches, songMatches } from "./lexicon";
 import { formatSnippet } from "./audio";
 
@@ -8,13 +8,12 @@ export function createRound(soloId: string): RoundState {
     soloId,
     attempts: [],
     rung: 0,
-    artistSolved: false,
-    songSolved: false,
+    solved: [],
     status: "playing",
   };
 }
 
-/** Which rung the player is on. Stays on the last rung once attempts run out. */
+/** Which rung the player is on. Stays on the last rung once the budget runs out. */
 export function rungIndex(state: RoundState, config: GameConfig): number {
   return Math.min(state.rung, config.ladderMs.length - 1);
 }
@@ -32,79 +31,100 @@ export function unlockedMs(state: RoundState, config: GameConfig): number {
   return config.ladderMs[rungIndex(state, config)];
 }
 
-export function attemptsLeft(state: RoundState, config: GameConfig): number {
-  return Math.max(0, config.ladderMs.length - state.attempts.length);
+/**
+ * The ladder is a budget of wrong answers, not of guesses.
+ *
+ * A correct answer costs nothing — it leaves the rung where it is and lets
+ * the player carry on at the same length of audio. So the round can only be
+ * lost by missing, and a run of right answers can never run it out.
+ */
+function misses(state: RoundState): number {
+  return state.attempts.filter((attempt) => !attempt.correct).length;
+}
+
+export function missesLeft(state: RoundState, config: GameConfig): number {
+  return Math.max(0, config.ladderMs.length - misses(state));
+}
+
+/** Categories still open, in the order they are asked. */
+export function openFields(state: RoundState, config: GameConfig): Field[] {
+  return activeFields(config).filter((field) => !state.solved.includes(field));
+}
+
+function matches(field: Field, guess: string, solo: Solo): boolean {
+  switch (field) {
+    case "artist":
+      return artistMatches(guess, solo.artist);
+    case "song":
+      return songMatches(guess, solo.song);
+    case "soloist":
+      // Same nickname table and typo budget as the artist: a soloist is a
+      // person's name too, and Trane is Trane in either box.
+      return artistMatches(guess, solo.soloist || solo.artist);
+  }
 }
 
 function settle(state: RoundState, config: GameConfig): RoundState {
-  const songDone = config.guessSong ? state.songSolved : true;
-
-  if (state.artistSolved && songDone) {
+  if (openFields(state, config).length === 0) {
     return { ...state, status: "won" };
   }
-  if (state.attempts.length >= config.ladderMs.length) {
+  if (misses(state) >= config.ladderMs.length) {
     return { ...state, status: "lost" };
   }
   return { ...state, status: "playing" };
 }
 
+/**
+ * Answer one category.
+ *
+ * Right: the field locks and the ladder stays put, so the rest of the record
+ * is still being guessed on the same half-second. Wrong: the ladder moves and
+ * the next category is up. Getting everything first time means hearing
+ * nothing more than the opening rung.
+ */
 export function submitGuess(
   state: RoundState,
   solo: Solo,
-  guess: { artist: string; song: string },
+  field: Field,
+  value: string,
   config: GameConfig,
 ): RoundState {
   if (state.status !== "playing") return state;
+  if (state.solved.includes(field)) return state;
+  if (!activeFields(config).includes(field)) return state;
 
-  const artistGuess = guess.artist.trim();
-  const songGuess = guess.song.trim();
-  if (!artistGuess && !songGuess) return state;
+  const guess = value.trim();
+  if (!guess) return state;
 
-  const artistHit =
-    state.artistSolved || (Boolean(artistGuess) && artistMatches(artistGuess, solo.artist));
-  const songHit =
-    state.songSolved ||
-    (config.guessSong && Boolean(songGuess) && songMatches(songGuess, solo.song));
-
-  const attempt: Attempt = {
-    artist: artistGuess || null,
-    song: songGuess || null,
-    artistCorrect: !state.artistSolved && artistHit,
-    songCorrect: !state.songSolved && songHit,
-    skipped: false,
-  };
+  const hit = matches(field, guess, solo);
+  const attempt: Attempt = { field, value: guess, correct: hit, skipped: false };
 
   const settled = settle(
     {
       ...state,
       attempts: [...state.attempts, attempt],
-      artistSolved: artistHit,
-      songSolved: songHit,
+      solved: hit ? [...state.solved, field] : state.solved,
     },
     config,
   );
 
-  // Only a guess that leaves the round open buys more audio.
-  return settled.status === "playing"
+  // Only a miss that leaves the round open buys more audio.
+  return settled.status === "playing" && !hit
     ? { ...settled, rung: advance(state, config) }
     : settled;
 }
 
-export function skipAttempt(state: RoundState, config: GameConfig): RoundState {
+/** Pass on a category without answering it. Costs the same as being wrong. */
+export function skipAttempt(state: RoundState, field: Field, config: GameConfig): RoundState {
   if (state.status !== "playing") return state;
+  if (state.solved.includes(field)) return state;
 
   // A free skip still has to move the ladder, or the button does nothing at all.
   if (!config.skipCostsAttempt) {
     return { ...state, rung: advance(state, config) };
   }
 
-  const attempt: Attempt = {
-    artist: null,
-    song: null,
-    artistCorrect: false,
-    songCorrect: false,
-    skipped: true,
-  };
+  const attempt: Attempt = { field, value: null, correct: false, skipped: true };
 
   return settle(
     { ...state, attempts: [...state.attempts, attempt], rung: advance(state, config) },
@@ -114,20 +134,33 @@ export function skipAttempt(state: RoundState, config: GameConfig): RoundState {
 
 export function giveUp(state: RoundState, config: GameConfig): RoundState {
   if (state.status !== "playing") return state;
-  const filler: Attempt = {
-    artist: null, song: null,
-    artistCorrect: false, songCorrect: false, skipped: true,
+
+  // Spend the rest of the budget, so the board and the shared grid read as a
+  // finished round rather than a walk-out. Every filler is a pass on the same
+  // question: spreading them over the open fields would draw a zigzag in the
+  // grid, which looks like someone answering rather than someone stopping.
+  const attempts = [...state.attempts];
+  const [first] = openFields(state, config);
+  while (attempts.filter((attempt) => !attempt.correct).length < config.ladderMs.length) {
+    attempts.push({ field: first ?? "artist", value: null, correct: false, skipped: true });
+  }
+
+  return {
+    ...state,
+    attempts,
+    rung: config.ladderMs.length - 1,
+    status: "lost",
   };
-  const padded = [...state.attempts];
-  while (padded.length < config.ladderMs.length) padded.push(filler);
-  return { ...state, attempts: padded, status: "lost" };
 }
 
 /* ------------------------------------------------------------------
    Stats
    ------------------------------------------------------------------ */
 
+export const STATS_VERSION = 2;
+
 export const EMPTY_STATS: Stats = {
+  version: STATS_VERSION,
   played: 0,
   won: 0,
   currentStreak: 0,
@@ -139,13 +172,16 @@ export const EMPTY_STATS: Stats = {
 export function recordResult(
   stats: Stats,
   state: RoundState,
+  config: GameConfig,
   dateKey: string | null,
 ): Stats {
   const won = state.status === "won";
   const distribution = [...stats.distribution];
 
+  // Bucketed by how little audio it took, because that is now the score.
+  // How many guesses it took is no longer interesting: right answers are free.
   if (won) {
-    const slot = state.attempts.length - 1;
+    const slot = rungIndex(state, config);
     while (distribution.length <= slot) distribution.push(0);
     distribution[slot] += 1;
   }
@@ -159,6 +195,7 @@ export function recordResult(
       : 0;
 
   return {
+    version: STATS_VERSION,
     played: stats.played + 1,
     won: stats.won + (won ? 1 : 0),
     currentStreak,
@@ -184,8 +221,9 @@ const WRONG = "⬛";
 const SKIPPED = "⬜";
 
 /**
- * Two columns because there are two answers: artist on the left, title on
- * the right. Reading a friend's grid tells you which half they got.
+ * One column per question — artist, then title, then who is playing.
+ * A row is one guess, and it shows the state of every answer after it, so
+ * reading a friend's grid tells you which half they got and when.
  */
 export function buildShare(
   state: RoundState,
@@ -197,23 +235,21 @@ export function buildShare(
     ? `Heardzz ${solo.catalog} · ${dateKey}`
     : `Heardzz ${solo.catalog}`;
 
-  const score = state.status === "won"
-    ? `${state.attempts.length}/${config.ladderMs.length}`
-    : `X/${config.ladderMs.length}`;
-
-  let artistDone = false;
-  let songDone = false;
+  const fields = activeFields(config);
+  const done = new Set<Field>();
 
   const rows = state.attempts.map((attempt) => {
-    if (attempt.skipped) return `${SKIPPED}${config.guessSong ? SKIPPED : ""}`;
-    artistDone = artistDone || attempt.artistCorrect;
-    songDone = songDone || attempt.songCorrect;
-    const left = artistDone ? CORRECT : WRONG;
-    const right = songDone ? CORRECT : WRONG;
-    return `${left}${config.guessSong ? right : ""}`;
+    if (attempt.correct) done.add(attempt.field);
+    // A pass answers nothing, so it shows as a pass in every column still
+    // open — marking only the field it was aimed at would read as a wrong
+    // answer everywhere else.
+    return fields
+      .map((field) => (done.has(field) ? CORRECT : attempt.skipped ? SKIPPED : WRONG))
+      .join("");
   });
 
   const heard = formatSnippet(unlockedMs(state, config));
+  const score = state.status === "won" ? `heard ${heard}` : `X · heard ${heard}`;
 
-  return [`${heading} · ${score}`, ...rows, `heard ${heard}`].join("\n");
+  return [heading, ...rows, score].join("\n");
 }

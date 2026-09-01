@@ -17,9 +17,17 @@ export const en = {
     suggest: "Suggest",
   },
 
+  /** Category names, short enough for the board and the settings blurbs. */
+  field: {
+    artist: "Artist",
+    song: "Title",
+    soloist: "Soloist",
+  },
+
   round: {
     eyebrow: "Record",
-    attemptOf: "Attempt {n} of {total}",
+    attemptOf: "Attempt {n}",
+    missesLeft: "{n} wrong answers left",
     listen: "Listen",
     playing: "Playing",
     replay: "Play again",
@@ -31,9 +39,14 @@ export const en = {
     songLabel: "Which tune",
     artistPlaceholder: "Start typing an artist",
     songPlaceholder: "Start typing a title",
+    soloistLabel: "Who is soloing",
+    soloistPlaceholder: "Start typing a name",
     artistSolved: "Artist found",
     songSolved: "Title found",
-    keysHint: "Space plays · Enter checks, or skips when empty",
+    soloistSolved: "Soloist found",
+    choiceLabel: "Which artist",
+    choiceHelp: "One of these five.",
+    keysHint: "Space plays · Enter checks · a right answer costs you nothing",
     keysHintRevealed: "Space plays it",
     keysHintNext: "Space plays · Enter starts the next one",
     lockedField: "Already found",
@@ -51,10 +64,10 @@ export const en = {
   result: {
     won: "Got it",
     lost: "Out of attempts",
-    wonIn: "Solved on attempt {n}",
     heardFor: "You heard {ms} of it",
     answerArtist: "Artist",
     answerSong: "Title",
+    answerSoloist: "Soloing",
     personnel: "On the date",
     from: "from",
     recordedIn: "Recorded {year}",
@@ -72,7 +85,7 @@ export const en = {
     winRate: "Win rate",
     streak: "Streak",
     maxStreak: "Best streak",
-    distribution: "Solved on attempt",
+    distribution: "Solved on",
     empty: "Play a round and this fills in.",
     reset: "Clear stats",
     resetConfirm: "Clear every stat and streak? This cannot be undone.",
@@ -81,14 +94,17 @@ export const en = {
   settings: {
     title: "Settings",
     intro: "Changes apply immediately and are remembered on this device.",
+    levels: "Level",
+    levelsHelp:
+      "The clock is the same at every level. What changes is where the clip starts and how much the record has to tell you.",
     ladder: "Snippet ladder",
     ladderHelp:
-      "How much audio each attempt unlocks. One row per attempt — add a row to give another guess.",
-    addRung: "Add attempt",
+      "How much audio a wrong answer unlocks. One row per wrong answer — a right one costs nothing and leaves the ladder where it is.",
+    addRung: "Add a rung",
     removeRung: "Remove",
-    presets: "Presets",
+    presets: "Ladder presets",
     guessSong: "Ask for the title as well as the artist",
-    skipCosts: "A skip uses up an attempt",
+    skipCosts: "A skip counts as a wrong answer",
     leadIn: "Lead-in before the solo",
     leadInHelp: "Extra audio played ahead of the start point. Zero is the honest setting.",
     verifiedOnly: "Only play tracks with a confirmed start",
@@ -113,6 +129,9 @@ export const en = {
     lookUp: "Look it up",
     lookingUp: "Looking it up",
     found: "What was found",
+    soloist: "Who is soloing",
+    soloistHelp:
+      "The hardest level asks for this by name, and it is often not the artist on the sleeve — Moanin' is an Art Blakey record and a Lee Morgan solo.",
     personnelCount: "On the date — {n} credited",
     noPersonnel:
       "Discogs credited nobody on this release. Add a Discogs link to a pressing that lists the band.",
@@ -124,6 +143,10 @@ export const en = {
     stop: "Stop",
     markVerified: "Confirm timestamp",
     verified: "Confirmed",
+    cutSoloClip: "Cut the solo clip",
+    soloClipCut: "The hard levels open at {time}.",
+    soloClipMissing:
+      "No solo clip yet — the hard levels fall back to the opening, which makes them easier than they should be.",
     recut: "Re-cut from a new time",
     recutHelp:
       "Use this when the right moment is not inside the clip at all. It downloads the source again.",

@@ -21,6 +21,7 @@ export function Result({
   solo, state, heardMs, share, isDaily, keysHint, onPlayFull, onNext,
 }: ResultProps) {
   const won = state.status === "won";
+  const soloist = solo.soloist || solo.artist;
   const [copied, setCopied] = useState(false);
   const [countdown, setCountdown] = useState<string | null>(null);
 
@@ -49,7 +50,6 @@ export function Result({
       </div>
 
       <p className="type-body mt-4 text-sm text-paper-dim">
-        {won && `${t("result.wonIn", { n: state.attempts.length })} · `}
         {t("result.heardFor", { ms: formatSnippet(heardMs) })}
       </p>
 
@@ -63,19 +63,35 @@ export function Result({
           <dd className="type-display mt-2 text-3xl text-paper">{solo.song}</dd>
           <dd className="type-body mt-1 text-sm text-paper-dim">{solo.album}</dd>
         </div>
+        {soloist && soloist !== solo.artist && (
+          <div className="border-b border-ink-edge py-4">
+            <dt className="type-eyebrow text-paper-faint">{t("result.answerSoloist")}</dt>
+            <dd className="type-display mt-2 text-3xl text-paper">{soloist}</dd>
+            {solo.soloistRole && (
+              <dd className="type-body mt-1 text-sm text-paper-dim">{solo.soloistRole}</dd>
+            )}
+          </div>
+        )}
         {solo.personnel.length > 0 && (
           <div className="border-b border-ink-edge py-4">
             <dt className="type-eyebrow text-paper-faint">{t("result.personnel")}</dt>
             <dd className="mt-3">
               <ul className="space-y-1">
-                {solo.personnel.map((credit) => (
-                  <li key={credit.name} className="flex flex-wrap gap-x-3 text-sm">
-                    <span className="type-body text-paper">{credit.name}</span>
-                    {credit.role && (
-                      <span className="type-body text-paper-faint">{credit.role}</span>
-                    )}
-                  </li>
-                ))}
+                {solo.personnel.map((credit) => {
+                  // The soloist is the one you were actually listening to;
+                  // the rest of the band is context.
+                  const solos = credit.name === soloist;
+                  return (
+                    <li key={credit.name} className="flex flex-wrap gap-x-3 text-sm">
+                      <span className={solos ? "type-body font-semibold text-flame" : "type-body text-paper"}>
+                        {credit.name}
+                      </span>
+                      {credit.role && (
+                        <span className="type-body text-paper-faint">{credit.role}</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </dd>
           </div>

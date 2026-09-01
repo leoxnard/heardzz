@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /* ------------------------------------------------------------------
-   npm run add-track -- --search "..." --soloist "..." --song "..." --solo 3:26
+   npm run add-track -- --search "..." --artist "..." --song "..." [--solo 3:26]
 
    Resolves the source, cuts the clip, and writes the entry into
-   data/solos.json. The timestamp is recorded as unverified: the admin
-   screen is where a human confirms it against the waveform.
+   data/solos.json.
+
+   Without --solo the round starts at the first audible moment of the
+   upload, which is what the web import and the suggestion queue both do —
+   dead air, needle drop and encoder padding are found and skipped rather
+   than counted as the opening. Give --solo only to cut from somewhere else.
    ------------------------------------------------------------------ */
 
 import {
@@ -35,16 +39,16 @@ const USAGE = `
   Required
     --artist   <name>        who the record is by  (answer one)
     --song     <title>       the tune              (answer two)
-    --solo     <mm:ss>       where the solo enters in the source
     --search   <phrase>      what to look for on YouTube
       or
     --url      <url>         an exact video
 
   Optional
+    --solo     <mm:ss>       where to cut from; default: the first audible moment
     --album    <title>
     --year     <yyyy>
     --note     <text>        one line shown on reveal
-    --id       <slug>        default: derived from song and soloist
+    --id       <slug>        default: derived from song and artist
     --verified               mark the timestamp as already checked
 `;
 
@@ -56,7 +60,7 @@ async function main() {
     process.exit(args.help ? 0 : 1);
   }
 
-  const missing = ["artist", "song", "solo"].filter((k) => !args[k]);
+  const missing = ["artist", "song"].filter((k) => !args[k]);
   if (!args.search && !args.url) missing.push("search or url");
   if (missing.length) {
     console.error(`\n  Missing: ${missing.join(", ")}\n${USAGE}`);
@@ -65,16 +69,21 @@ async function main() {
 
   await checkTools();
 
-  const soloStart = parseTimecode(args.solo);
+  // "opening" is resolved against the audio once it is downloaded, so
+  // finding the downbeat costs nothing extra.
+  const wantsOpening = args.solo === undefined;
+  const soloStart = wantsOpening ? "opening" : parseTimecode(args.solo);
   const id = args.id || slugify(`${args.song}-${args.artist}`);
 
-  process.stdout.write(`  ${args.artist} — ${args.song} @ ${formatTimecode(soloStart)}\n`);
+  process.stdout.write(
+    `  ${args.artist} — ${args.song} @ ${wantsOpening ? "the opening" : formatTimecode(soloStart)}\n`,
+  );
   process.stdout.write(`  resolving source… `);
 
   const source = await resolveSource(args.url || args.search);
   process.stdout.write(`${source.title} [${source.youtubeId}]\n`);
 
-  if (source.duration && soloStart > source.duration) {
+  if (source.duration && !wantsOpening && soloStart > source.duration) {
     throw new Error(
       `Solo at ${formatTimecode(soloStart)} is past the end of a ` +
         `${formatTimecode(source.duration)} recording`,
@@ -98,8 +107,11 @@ async function main() {
     album: args.album || "",
     year: Number(args.year) || 0,
     personnel: [],
+    soloist: args.soloist || args.artist,
     youtubeId: source.youtubeId,
-    soloStart,
+    // What the extractor actually settled on, which for "opening" is the
+    // detected downbeat rather than the string.
+    soloStart: clip.soloStart,
     audio: clip.audio,
     leadIn: clip.leadIn,
     clipDuration: clip.clipDuration,
@@ -107,7 +119,10 @@ async function main() {
     note: typeof args.note === "string" ? args.note : undefined,
   });
 
-  console.log(`  written  public${clip.audio}  (${clip.clipDuration}s, lead-in ${clip.leadIn}s)`);
+  console.log(
+    `  written  ${clip.audio}  ` +
+      `(from ${formatTimecode(clip.soloStart)}, ${clip.clipDuration}s, lead-in ${clip.leadIn}s)`,
+  );
 
   if (clip.markerLevel !== null && clip.markerLevel < SILENT_DBFS) {
     console.log(

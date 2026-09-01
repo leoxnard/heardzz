@@ -34,6 +34,16 @@ export function GuessField({
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  /**
+   * Whether the current highlight came from the arrow keys rather than from
+   * the top-match default. Enter behaves differently for each: the default
+   * highlight is a guess at what you are about to finish typing, so Enter
+   * both takes it and checks it; a highlight you moved to yourself is a
+   * choice you are still making, so Enter only fills it in and leaves
+   * checking it to a second press — arrowing through five names and having
+   * the first Enter fire off a guess would be its own kind of surprise.
+   */
+  const [arrowed, setArrowed] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const options = useMemo<Suggestion[]>(
@@ -62,27 +72,36 @@ export function GuessField({
     onChange(option);
     setOpen(false);
     setActive(-1);
+    setArrowed(false);
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown" && options.length) {
       event.preventDefault();
       setOpen(true);
+      setArrowed(true);
       setActive((i) => (i + 1) % options.length);
     } else if (event.key === "ArrowUp" && options.length) {
       event.preventDefault();
       setOpen(true);
+      setArrowed(true);
       setActive((i) => (i <= 0 ? options.length - 1 : i - 1));
     } else if (event.key === "Enter") {
-      // A visible highlighted match: take it and check it in one press,
-      // whether it is the pre-selected top match or one arrowed to.
       if (showList && active >= 0 && options[active]) {
         event.preventDefault();
         const picked = options[active].value;
-        setOpen(false);
-        setActive(-1);
-        onChange(picked);
-        onSubmit(picked);
+
+        if (arrowed) {
+          // A choice made by hand: apply it, and wait for a second Enter to
+          // check it — the same as clicking it would.
+          choose(picked);
+        } else {
+          // The unprompted top match: taking it and checking it is one press.
+          setOpen(false);
+          setActive(-1);
+          onChange(picked);
+          onSubmit(picked);
+        }
       } else {
         onSubmit();
       }
@@ -136,6 +155,8 @@ export function GuessField({
            */
           const upcoming = solved || disabled ? [] : suggest(next, pool);
           setActive(upcoming.length > 0 ? 0 : -1);
+          // Typing again starts over at the default: back to the top match.
+          setArrowed(false);
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}

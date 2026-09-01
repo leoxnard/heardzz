@@ -11,7 +11,9 @@
     "seed": "node scripts/seed.mjs",
     "retime": "node scripts/retime.mjs",
     "personnel": "node scripts/personnel.mjs",
-    "fetch-missing": "node scripts/fetch-missing.mjs"
+    "fetch-missing": "node scripts/fetch-missing.mjs",
+    "backfill-soloist": "node scripts/backfill-soloist.mjs",
+    "cut-solos": "node scripts/cut-solo-clips.mjs"
   },
   "dependencies": {
     "next": "16.3.4",

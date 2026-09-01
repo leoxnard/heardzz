@@ -24,7 +24,7 @@ export function daysSinceEpoch(dateKey: string): number {
   return Math.floor(ms / 86_400_000);
 }
 
-function mulberry32(seed: number) {
+export function mulberry32(seed: number) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -35,7 +35,17 @@ function mulberry32(seed: number) {
   };
 }
 
-function shuffle<T>(items: T[], seed: number): T[] {
+/** A string turned into a seed, so anything with an id can be shuffled stably. */
+export function seedFrom(text: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+export function shuffle<T>(items: T[], seed: number): T[] {
   const out = [...items];
   const rand = mulberry32(seed);
   for (let i = out.length - 1; i > 0; i--) {

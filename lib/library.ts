@@ -12,7 +12,15 @@ export async function loadLibrary(): Promise<SoloLibrary> {
     const parsed = JSON.parse(raw) as SoloLibrary;
     return {
       version: parsed.version ?? 1,
-      solos: Array.isArray(parsed.solos) ? parsed.solos : [],
+      /*
+       * A record written before soloists existed has none. The leader is the
+       * soloist far more often than not, so defaulting to the artist keeps
+       * every level playable on an old library rather than asking a question
+       * with no answer behind it.
+       */
+      solos: Array.isArray(parsed.solos)
+        ? parsed.solos.map((solo) => ({ ...solo, soloist: solo.soloist || solo.artist }))
+        : [],
     };
   } catch {
     return { version: 1, solos: [] };

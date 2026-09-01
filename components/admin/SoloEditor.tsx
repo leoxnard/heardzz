@@ -44,7 +44,7 @@ interface SoloEditorProps {
 
 export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
   const [draft, setDraft] = useState<Solo>(solo);
-  const [busy, setBusy] = useState<null | "saving" | "recutting">(null);
+  const [busy, setBusy] = useState<null | "saving" | "recutting" | "solo-clip">(null);
   const [error, setError] = useState<string | null>(null);
   const [recutAt, setRecutAt] = useState(Math.round(solo.soloStart));
   const [discogsLink, setDiscogsLink] = useState("");
@@ -112,6 +112,31 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
       onSaved(data);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Re-cut failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Cut the clip the hard levels play — the one that opens on the solo
+   * rather than on the tune. `soloAt` doubles as the entry point, so the
+   * scrubber's current position is what gets cut.
+   */
+  async function cutSoloClip() {
+    setBusy("solo-clip");
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/solo-clip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: draft.id, soloAt: recutAt }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not cut the solo clip");
+      setDraft(data);
+      onSaved(data);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not cut the solo clip");
     } finally {
       setBusy(null);
     }
@@ -298,7 +323,22 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
           >
             {busy === "recutting" ? t("library.importing") : t("library.recutHere")}
           </button>
+
+          <button
+            type="button"
+            onClick={cutSoloClip}
+            disabled={busy !== null}
+            className="type-eyebrow border border-ink-edge px-5 py-3 text-paper-dim transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+          >
+            {busy === "solo-clip" ? t("library.importing") : t("library.cutSoloClip")}
+          </button>
         </div>
+
+        <p className="type-body mt-3 text-xs leading-relaxed text-paper-faint">
+          {draft.soloClip
+            ? t("library.soloClipCut", { time: timecode(draft.soloClip.start) })
+            : t("library.soloClipMissing")}
+        </p>
 
         <div className="mt-6 aspect-video w-full border border-ink-edge">
           <iframe
@@ -309,6 +349,30 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
             referrerPolicy="strict-origin-when-cross-origin"
           />
         </div>
+      </section>
+
+      <section className="mt-12 border-t border-ink-edge pt-8">
+        <h3 className="type-eyebrow text-flame">{t("library.soloist")}</h3>
+        <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+          {t("library.soloistHelp")}
+        </p>
+        <select
+          value={draft.soloist || draft.artist}
+          onChange={(event) => field("soloist", event.target.value)}
+          className="type-body mt-4 w-full border border-ink-edge bg-ink-raised px-3 py-2 text-sm text-paper focus:border-flame focus:outline-none"
+        >
+          {/* The leader is always offered, even when the credits omit them. */}
+          {[
+            ...new Set([
+              draft.artist,
+              ...draft.personnel.map((credit) => credit.name).filter(Boolean),
+            ]),
+          ].map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
       </section>
 
       <section className="mt-12 border-t border-ink-edge pt-8">

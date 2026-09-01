@@ -3,6 +3,7 @@ import {
   checkTools, extractClip, nextCatalog, parseTimecode, readLibrary, resolveSource, slugify, upsertSolo,
 } from "@/scripts/extract.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
+import { resolveSoloist } from "@/lib/soloist";
 import type { Credit, Solo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ interface ImportBody {
   target: string;
   artist: string;
   song: string;
+  /** Whoever takes the solo. Falls back to the artist when it is left out. */
+  soloist?: string;
   /** Where the round starts. Omit or pass "opening" for the top of the tune. */
   solo?: string;
   album?: string;
@@ -61,6 +64,9 @@ export async function POST(request: Request) {
     const library = await readLibrary();
     const existing = (library.solos as Solo[]).find((solo) => solo.id === id);
 
+    const personnel = Array.isArray(body.personnel) ? body.personnel : [];
+    const soloist = resolveSoloist(body.soloist, body.artist.trim(), personnel);
+
     const solo: Solo = {
       id,
       catalog: existing?.catalog ?? nextCatalog(library),
@@ -68,7 +74,8 @@ export async function POST(request: Request) {
       song: body.song.trim(),
       album: body.album?.trim() || "",
       year: Number(body.year) || 0,
-      personnel: Array.isArray(body.personnel) ? body.personnel : [],
+      personnel,
+      ...soloist,
       discogsReleaseId: body.discogsReleaseId,
       youtubeId: source.youtubeId,
       soloStart: clip.soloStart,

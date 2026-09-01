@@ -6,60 +6,62 @@ import type { Attempt } from "@/lib/types";
 /* ------------------------------------------------------------------
    The record of what has been tried.
 
-   Correct answers invert to a solid flame block; wrong ones are struck
-   through and dimmed. The distinction never rests on hue alone.
+   One row per guess, tagged with the category it was aimed at, because a
+   guess now answers one question rather than all of them at once. Correct
+   answers invert to a solid flame block; wrong ones are struck through and
+   dimmed. The distinction never rests on hue alone.
+
+   The empty rows underneath are the budget: one for every wrong answer
+   still affordable. Right answers add a row without taking one away.
    ------------------------------------------------------------------ */
 
 interface BoardProps {
   attempts: Attempt[];
-  total: number;
-  guessSong: boolean;
+  missesLeft: number;
 }
 
-export function Board({ attempts, total, guessSong }: BoardProps) {
-  const rows = Array.from({ length: total }, (_, i) => attempts[i] ?? null);
+export function Board({ attempts, missesLeft }: BoardProps) {
+  const blanks = Array.from({ length: missesLeft }, (_, i) => i);
+
+  if (attempts.length === 0 && blanks.length === 0) {
+    return <p className="type-body text-sm text-paper-faint">{t("board.empty")}</p>;
+  }
 
   return (
     <ol className="border-t border-ink-edge">
-      {rows.map((attempt, i) => (
-        <li
-          key={i}
-          className="flex items-stretch gap-4 border-b border-ink-edge py-3"
-        >
-          <span className="type-data w-7 shrink-0 pt-[2px] text-xs text-paper-faint">
+      {attempts.map((attempt, i) => (
+        <li key={i} className="flex items-baseline gap-4 border-b border-ink-edge py-3">
+          <span className="type-data w-7 shrink-0 text-xs text-paper-faint">
             {String(i + 1).padStart(2, "0")}
           </span>
-
-          {attempt === null ? (
-            <span className="type-body text-sm text-paper-faint">—</span>
-          ) : attempt.skipped ? (
-            <span className="type-eyebrow pt-1 text-paper-faint">{t("board.skipped")}</span>
+          <span className="type-eyebrow w-20 shrink-0 text-paper-faint">
+            {t(`field.${attempt.field}`)}
+          </span>
+          {attempt.skipped ? (
+            <span className="type-eyebrow text-paper-faint">{t("board.skipped")}</span>
+          ) : attempt.correct ? (
+            <span className="type-body min-w-0 truncate bg-flame px-2 py-[2px] text-sm font-semibold text-ink">
+              {attempt.value}
+            </span>
           ) : (
-            <div className={`grid min-w-0 flex-1 gap-x-4 gap-y-1 ${guessSong ? "sm:grid-cols-2" : ""}`}>
-              <Cell value={attempt.artist} correct={attempt.artistCorrect} />
-              {guessSong && <Cell value={attempt.song} correct={attempt.songCorrect} />}
-            </div>
+            <span className="type-body min-w-0 truncate px-2 py-[2px] text-sm text-paper-dim line-through decoration-paper-faint">
+              {attempt.value}
+            </span>
           )}
         </li>
       ))}
-    </ol>
-  );
-}
 
-function Cell({ value, correct }: { value: string | null; correct: boolean }) {
-  if (!value) {
-    return <span className="type-body truncate text-sm text-paper-faint">—</span>;
-  }
-  if (correct) {
-    return (
-      <span className="type-body truncate bg-flame px-2 py-[2px] text-sm font-semibold text-ink">
-        {value}
-      </span>
-    );
-  }
-  return (
-    <span className="type-body truncate px-2 py-[2px] text-sm text-paper-dim line-through decoration-paper-faint">
-      {value}
-    </span>
+      {blanks.map((i) => (
+        <li
+          key={`blank-${i}`}
+          className="flex items-baseline gap-4 border-b border-ink-edge py-3"
+        >
+          <span className="type-data w-7 shrink-0 text-xs text-paper-faint">
+            {String(attempts.length + i + 1).padStart(2, "0")}
+          </span>
+          <span className="type-body text-sm text-paper-faint">—</span>
+        </li>
+      ))}
+    </ol>
   );
 }

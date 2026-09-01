@@ -6,6 +6,7 @@ import { Sleeve } from "./Sleeve";
 import { Board } from "./Board";
 import { Result } from "./Result";
 import { GuessField } from "./GuessField";
+import { ChoiceField } from "./ChoiceField";
 import { SettingsPanel } from "./SettingsPanel";
 import { StatsPanel } from "./StatsPanel";
 import { formatSnippet, useSoloAudio } from "@/lib/audio";
@@ -14,10 +15,39 @@ import { t } from "@/lib/i18n";
 import { ARTISTS, SONGS, buildPool } from "@/lib/lexicon";
 import { useConfig, useDailyRecord, usePracticeIndex, useStats } from "@/lib/storage";
 import {
-  attemptsLeft, buildShare, createRound, giveUp, recordResult,
-  rungIndex, skipAttempt, submitGuess, unlockedMs,
+  buildShare, createRound, giveUp, missesLeft, openFields,
+  recordResult, rungIndex, skipAttempt, submitGuess, unlockedMs,
 } from "@/lib/game";
-import type { RoundState, Solo } from "@/lib/types";
+import { activeFields, levelOf } from "@/lib/config";
+import type { Field, RoundState, Solo } from "@/lib/types";
+
+/* ------------------------------------------------------------------
+   The three questions a record can be asked.
+
+   Everything about a category lives here rather than in the markup, so
+   adding a fourth is a matter of one more entry plus its strings.
+   ------------------------------------------------------------------ */
+
+const FIELDS = {
+  artist: {
+    label: "round.artistLabel",
+    placeholder: "round.artistPlaceholder",
+    solved: "round.artistSolved",
+    answer: (solo: Solo) => solo.artist,
+  },
+  song: {
+    label: "round.songLabel",
+    placeholder: "round.songPlaceholder",
+    solved: "round.songSolved",
+    answer: (solo: Solo) => solo.song,
+  },
+  soloist: {
+    label: "round.soloistLabel",
+    placeholder: "round.soloistPlaceholder",
+    solved: "round.soloistSolved",
+    answer: (solo: Solo) => solo.soloist || solo.artist,
+  },
+} as const;
 
 type Mode = "daily" | "practice";
 
@@ -29,8 +59,10 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
   const { index: practiceIndex, advance: nextPractice } = usePracticeIndex();
 
   const [panel, setPanel] = useState<"settings" | "stats" | null>(null);
-  const [artistInput, setArtistInput] = useState("");
-  const [songInput, setSongInput] = useState("");
+  const [inputs, setInputs] = useState<Partial<Record<Field, string>>>({});
+
+  const level = levelOf(config);
+  const fields = activeFields(config);
 
   // Filtering can empty the pool entirely; falling back beats a blank screen.
   const pool = useMemo(() => {
@@ -55,6 +87,12 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
 
   const artistRef = useRef<HTMLInputElement>(null);
   const songRef = useRef<HTMLInputElement>(null);
+  const soloistRef = useRef<HTMLInputElement>(null);
+  const refs: Record<Field, React.RefObject<HTMLInputElement | null>> = {
+    artist: artistRef,
+    song: songRef,
+    soloist: soloistRef,
+  };
 
   /**
    * Open the round: restore today's if there is one, otherwise start fresh.
@@ -69,7 +107,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
     if (!solo || !configLoaded) return;
     if (mode === "daily" && !recordLoaded) return;
 
-    const key = `${mode}:${dateKey}:${solo.id}`;
+    const key = `${mode}:${dateKey}:${solo.id}:${config.level}`;
     if (openedRound.current === key) return;
     openedRound.current = key;
 
@@ -81,14 +119,41 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
 
     setRound(createRound(solo.id));
     recorded.current = null;
-    setArtistInput("");
-    setSongInput("");
-  }, [solo, mode, dateKey, record, recordLoaded, configLoaded]);
+    setInputs({});
+  }, [solo, mode, dateKey, record, recordLoaded, configLoaded, config.level]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const audio = useSoloAudio(solo?.audio ?? null, config.volume);
+  /*
+   * Which cut of the record is in play. The harder levels open at the solo
+   * entry, which is a different file — one that a record may not have been
+   * given yet. Falling back to the head clip keeps every record playable at
+   * every level; it only makes the hard ones easier than they should be.
+   */
+  const clip = useMemo(() => {
+    if (!solo) return null;
+    if (level.start === "solo" && solo.soloClip) return solo.soloClip;
+    return { audio: solo.audio, leadIn: solo.leadIn, clipDuration: solo.clipDuration };
+  }, [solo, level.start]);
+
+  const audio = useSoloAudio(clip?.audio ?? null, config.volume);
 
   const revealed = round?.status === "won" || round?.status === "lost";
+
+  /**
+   * When the round became revealed, so Enter can refuse to act on it for a
+   * moment.
+   *
+   * `event.repeat` catches a key literally held too long, but not a second,
+   * genuine press thrown in out of habit — someone used to pressing Enter
+   * twice to be sure, arriving a beat after the first already solved the
+   * round. Nothing distinguishes that keydown from a deliberate "move on"
+   * except how soon it lands after the reveal, so revealed gets a short
+   * window where it plainly refuses to mean anything yet.
+   */
+  const revealedAt = useRef<number | null>(null);
+  useEffect(() => {
+    revealedAt.current = revealed ? Date.now() : null;
+  }, [revealed, round?.soloId]);
 
   /**
    * Where the playhead sits inside the solo, in milliseconds.
@@ -99,34 +164,34 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
    * subtracted, because it sounds before the solo rather than inside it.
    */
   const playheadMs = useMemo(() => {
-    if (!audio.isPlaying || !solo || !round) return null;
+    if (!audio.isPlaying || !clip || !round) return null;
 
     if (revealed) {
-      return audio.progress * (solo.clipDuration - solo.leadIn) * 1000;
+      return audio.progress * (clip.clipDuration - clip.leadIn) * 1000;
     }
 
-    const leadMs = Math.min(config.leadInMs, solo.leadIn * 1000);
+    const leadMs = Math.min(config.leadInMs, clip.leadIn * 1000);
     const totalMs = leadMs + unlockedMs(round, config);
     return Math.max(0, audio.progress * totalMs - leadMs);
-  }, [audio.isPlaying, audio.progress, solo, round, revealed, config]);
+  }, [audio.isPlaying, audio.progress, clip, round, revealed, config]);
 
   const play = useCallback(() => {
-    if (!solo || !round) return;
+    if (!clip || !round) return;
     if (audio.isPlaying) {
       audio.stop();
       return;
     }
 
     if (revealed) {
-      audio.play(solo.leadIn, solo.clipDuration - solo.leadIn);
+      audio.play(clip.leadIn, clip.clipDuration - clip.leadIn);
       return;
     }
 
     const lead = config.leadInMs / 1000;
-    const offset = Math.max(0, solo.leadIn - lead);
-    const duration = (solo.leadIn - offset) + unlockedMs(round, config) / 1000;
+    const offset = Math.max(0, clip.leadIn - lead);
+    const duration = (clip.leadIn - offset) + unlockedMs(round, config) / 1000;
     audio.play(offset, duration);
-  }, [solo, round, audio, revealed, config]);
+  }, [clip, round, audio, revealed, config]);
 
   // Persist the daily round after every change to it.
   useEffect(() => {
@@ -140,74 +205,113 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
     if (!round || !solo || round.status === "playing") return;
     if (recorded.current === solo.id) return;
     recorded.current = solo.id;
-    setStats((current) => recordResult(current, round, mode === "daily" ? dateKey : null));
-  }, [round, solo, mode, dateKey, setStats]);
+    setStats((current) =>
+      recordResult(current, round, config, mode === "daily" ? dateKey : null),
+    );
+  }, [round, solo, mode, dateKey, config, setStats]);
 
   const artistPool = useMemo(
     () => buildPool(ARTISTS, solos.map((s) => s.artist)),
     [solos],
   );
   const songPool = useMemo(() => buildPool(SONGS, solos.map((s) => s.song)), [solos]);
+  /*
+   * Everyone the library has ever credited, plus the wider artist lexicon.
+   * The people who play on these records are largely the people who lead
+   * them, so no separate list of sidemen has to be kept anywhere.
+   */
+  const soloistPool = useMemo(
+    () => buildPool(ARTISTS, solos.flatMap((s) => s.personnel.map((credit) => credit.name))),
+    [solos],
+  );
+  const pools: Record<Field, string[]> = {
+    artist: artistPool,
+    song: songPool,
+    soloist: soloistPool,
+  };
 
-  const hasGuess = Boolean(artistInput.trim() || songInput.trim());
+  const open = round ? openFields(round, config) : [];
+  const hasGuess = open.some((field) => (inputs[field] ?? "").trim());
 
   /**
-   * Picking a suggestion and submitting are one keystroke, not two — Enter
-   * on a highlighted option both fills the field and checks it. That means
-   * the value being guessed can be newer than React's own state: setState
-   * from the same field is batched, so reading artistInput/songInput back
-   * immediately afterward would see the value from before this keystroke.
-   * An override says what was actually chosen.
+   * Check one or more categories.
+   *
+   * Each is scored on its own: a right answer locks its field and leaves the
+   * ladder alone, a wrong one buys the next rung. Folding them through the
+   * reducer in order means checking two at once costs exactly what checking
+   * them one after the other would have.
+   *
+   * The override exists because picking a suggestion and submitting are one
+   * keystroke, not two — setState from the same field is batched, so reading
+   * `inputs` back immediately afterward would see the value from before this
+   * keystroke.
    */
   const guess = useCallback(
-    (overrides?: { artist?: string; song?: string }) => {
+    (entries: { field: Field; value: string }[]) => {
       if (!round || !solo) return;
-      const artist = overrides?.artist ?? artistInput;
-      const song = overrides?.song ?? songInput;
-      if (!artist.trim() && !song.trim()) return;
+      const filled = entries.filter(
+        (entry) => entry.value.trim() && !round.solved.includes(entry.field),
+      );
+      if (filled.length === 0) return;
 
-      const next = submitGuess(round, solo, { artist, song }, config);
+      let next = round;
+      for (const entry of filled) {
+        next = submitGuess(next, solo, entry.field, entry.value, config);
+      }
       setRound(next);
-      setArtistInput(next.artistSolved ? artist : "");
-      setSongInput(next.songSolved ? song : "");
 
-      // Put the caret back on whichever half is still open.
+      setInputs((current) => {
+        const updated = { ...current };
+        for (const entry of filled) {
+          updated[entry.field] = next.solved.includes(entry.field) ? entry.value : "";
+        }
+        return updated;
+      });
+
+      // Put the caret on whichever question is still open.
       queueMicrotask(() => {
-        if (!next.artistSolved) artistRef.current?.focus();
-        else if (config.guessSong && !next.songSolved) songRef.current?.focus();
+        const still = openFields(next, config);
+        if (still.length > 0) refs[still[0]].current?.focus();
       });
     },
-    [round, solo, artistInput, songInput, config],
+    // refs holds three stable useRef objects; rebuilding the wrapper each
+    // render does not change what they point at.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [round, solo, config],
   );
 
-  const guessArtist = useCallback(
-    (overrideValue?: string) => guess(overrideValue !== undefined ? { artist: overrideValue } : undefined),
-    [guess],
-  );
-  const guessSong = useCallback(
-    (overrideValue?: string) => guess(overrideValue !== undefined ? { song: overrideValue } : undefined),
-    [guess],
+  const guessField = useCallback(
+    (field: Field, overrideValue?: string) =>
+      guess([{ field, value: overrideValue ?? inputs[field] ?? "" }]),
+    [guess, inputs],
   );
 
+  /** Pass on the question at the top of the list. */
   const skip = useCallback(() => {
     if (!round) return;
+    const [first] = openFields(round, config);
+    if (!first) return;
     audio.stop();
-    setRound(skipAttempt(round, config));
+    setRound(skipAttempt(round, first, config));
   }, [round, audio, config]);
 
   /**
    * One action rather than two.
    *
-   * Guessing and skipping both spend an attempt and both unlock the next
-   * rung; the only difference is whether what you typed is recorded. Two
-   * buttons side by side meant typing an answer and then throwing it away by
-   * pressing the wrong one. So the control follows the fields: with something
-   * in them it guesses, with nothing in them it skips.
+   * Two buttons side by side meant typing an answer and then throwing it away
+   * by pressing the wrong one. So the control follows the fields: with
+   * something in them it checks everything that has been typed, with nothing
+   * in them it passes on the question at the top.
    */
   const submit = useCallback(() => {
-    if (artistInput.trim() || songInput.trim()) guess();
+    if (!round) return;
+    const entries = openFields(round, config)
+      .map((field) => ({ field, value: inputs[field] ?? "" }))
+      .filter((entry) => entry.value.trim());
+
+    if (entries.length > 0) guess(entries);
     else skip();
-  }, [artistInput, songInput, guess, skip]);
+  }, [round, config, inputs, guess, skip]);
 
   /**
    * Keyboard control.
@@ -268,7 +372,10 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
       }
 
       if (revealed) {
-        if (mode === "practice") {
+        // Won't be argued past for a quarter second — long enough that only
+        // a keypress meant for the result screen itself lands after it.
+        const justNow = revealedAt.current !== null && Date.now() - revealedAt.current < 250;
+        if (mode === "practice" && !justNow) {
           event.preventDefault();
           nextPractice();
         }
@@ -291,7 +398,13 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
   }
 
   const share = buildShare(round, solo, config, mode === "daily" ? dateKey : null);
-  const left = attemptsLeft(round, config);
+  const left = missesLeft(round, config);
+  /* Values already tried and wrong, so a multiple-choice option can be
+     struck out rather than silently accepted a second time. */
+  const rejected = (field: Field) =>
+    round.attempts
+      .filter((attempt) => attempt.field === field && !attempt.correct && attempt.value)
+      .map((attempt) => attempt.value as string);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -333,10 +446,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
             <>
               <div className="flex items-baseline justify-between gap-4">
                 <span className="type-eyebrow text-paper-faint">
-                  {t("round.attemptOf", {
-                    n: round.attempts.length + 1,
-                    total: config.ladderMs.length,
-                  })}
+                  {level.label}
                 </span>
                 <span className="type-data text-xs text-paper-faint">
                   {formatSnippet(unlockedMs(round, config))}
@@ -344,33 +454,40 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
               </div>
 
               <div className="mt-6 space-y-5">
-                <GuessField
-                  label={t("round.artistLabel")}
-                  placeholder={t("round.artistPlaceholder")}
-                  pool={artistPool}
-                  value={artistInput}
-                  onChange={setArtistInput}
-                  onSubmit={guessArtist}
-                  solved={round.artistSolved}
-                  solvedLabel={t("round.artistSolved")}
-                  solvedValue={solo.artist}
-                  inputRef={artistRef}
-                />
+                {fields.map((field) => {
+                  const copy = FIELDS[field];
+                  const answer = copy.answer(solo);
 
-                {config.guessSong && (
-                  <GuessField
-                    label={t("round.songLabel")}
-                    placeholder={t("round.songPlaceholder")}
-                    pool={songPool}
-                    value={songInput}
-                    onChange={setSongInput}
-                    onSubmit={guessSong}
-                    solved={round.songSolved}
-                    solvedLabel={t("round.songSolved")}
-                    solvedValue={solo.song}
-                    inputRef={songRef}
-                  />
-                )}
+                  return level.choice.includes(field) ? (
+                    <ChoiceField
+                      key={field}
+                      label={t(copy.label)}
+                      seed={solo.id}
+                      answer={answer}
+                      pool={pools[field]}
+                      onPick={(value) => guess([{ field, value }])}
+                      rejected={rejected(field)}
+                      solved={round.solved.includes(field)}
+                      solvedLabel={t(copy.solved)}
+                    />
+                  ) : (
+                    <GuessField
+                      key={field}
+                      label={t(copy.label)}
+                      placeholder={t(copy.placeholder)}
+                      pool={pools[field]}
+                      value={inputs[field] ?? ""}
+                      onChange={(value) =>
+                        setInputs((current) => ({ ...current, [field]: value }))
+                      }
+                      onSubmit={(overrideValue) => guessField(field, overrideValue)}
+                      solved={round.solved.includes(field)}
+                      solvedLabel={t(copy.solved)}
+                      solvedValue={answer}
+                      inputRef={refs[field]}
+                    />
+                  );
+                })}
               </div>
 
               <button
@@ -390,7 +507,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
               </p>
 
               <p className="type-data mt-3 text-xs text-paper-faint">
-                {left} left
+                {t("round.missesLeft", { n: left })}
                 {" · "}
                 <button
                   type="button"
@@ -402,11 +519,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
               </p>
 
               <div className="mt-10">
-                <Board
-                  attempts={round.attempts}
-                  total={config.ladderMs.length}
-                  guessSong={config.guessSong}
-                />
+                <Board attempts={round.attempts} missesLeft={left} />
               </div>
             </>
           )}
@@ -424,7 +537,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
       {panel === "stats" && (
         <StatsPanel
           stats={stats}
-          ladderLength={config.ladderMs.length}
+          ladderMs={config.ladderMs}
           onReset={resetStats}
           onClose={() => setPanel(null)}
         />

@@ -2,7 +2,7 @@
 
 import { Overlay, Toggle } from "./Overlay";
 import { formatSnippet } from "@/lib/audio";
-import { CLIP_SECONDS, LADDER_PRESETS, type GameConfig } from "@/lib/config";
+import { CLIP_SECONDS, LADDER_PRESETS, LEVELS, type GameConfig } from "@/lib/config";
 import { t } from "@/lib/i18n";
 
 interface SettingsPanelProps {
@@ -32,6 +32,37 @@ export function SettingsPanel({ config, onPatch, onReset, onClose }: SettingsPan
   return (
     <Overlay title={t("settings.title")} onClose={onClose}>
       <p className="type-body text-sm text-paper-dim">{t("settings.intro")}</p>
+
+      <Section title={t("settings.levels")} help={t("settings.levelsHelp")}>
+        <ul className="space-y-2">
+          {LEVELS.map((level) => {
+            const active = level.id === config.level;
+            return (
+              <li key={level.id}>
+                <button
+                  type="button"
+                  onClick={() => onPatch({ level: level.id })}
+                  aria-pressed={active}
+                  className={`w-full border px-4 py-3 text-left transition-colors duration-150 ${
+                    active
+                      ? "border-flame bg-flame text-ink"
+                      : "border-ink-edge text-paper-dim hover:border-paper-faint hover:text-paper"
+                  }`}
+                >
+                  <span className="type-eyebrow block">{level.label}</span>
+                  <span
+                    className={`type-body mt-1 block text-xs ${
+                      active ? "text-ink/70" : "text-paper-faint"
+                    }`}
+                  >
+                    {level.blurb}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Section>
 
       <Section title={t("settings.presets")}>
         <div className="flex flex-wrap gap-2">

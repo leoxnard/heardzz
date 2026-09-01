@@ -44,7 +44,15 @@
       "note": "The unaccompanied opening cadenza — twelve seconds that reset what a jazz solo could be.",
       "instrument": "trumpet",
       "discogsReleaseId": 19434874,
-      "sourceDuration": 195
+      "sourceDuration": 195,
+      "soloist": "Louis Armstrong",
+      "soloistRole": "Trumpet",
+      "soloClip": {
+        "audio": "/api/audio/west-end-blues-louis-armstrong--solo.mp3",
+        "start": 5.2,
+        "leadIn": 5.2,
+        "clipDuration": 40
+      }
     },
     {
       "id": "ko-ko-charlie-parker",
@@ -85,7 +93,15 @@
       "note": "Cherokee's changes at a tempo nobody had taken them before.",
       "instrument": "alto saxophone",
       "sourceDuration": 180,
-      "discogsReleaseId": 19212586
+      "discogsReleaseId": 19212586,
+      "soloist": "Charlie Parker",
+      "soloistRole": "Alto Saxophone",
+      "soloClip": {
+        "audio": "/api/audio/ko-ko-charlie-parker--solo.mp3",
+        "start": 26,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "joy-spring-clifford-brown",
@@ -125,7 +141,15 @@
       "verified": true,
       "instrument": "trumpet",
       "discogsReleaseId": 15353329,
-      "sourceDuration": 411
+      "sourceDuration": 411,
+      "soloist": "Clifford Brown",
+      "soloistRole": "Trumpet",
+      "soloClip": {
+        "audio": "/api/audio/joy-spring-clifford-brown--solo.mp3",
+        "start": 47,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "st-thomas-sonny-rollins",
@@ -160,7 +184,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 3934932,
-      "sourceDuration": 408
+      "sourceDuration": 408,
+      "soloist": "Sonny Rollins",
+      "soloistRole": "Tenor Saxophone",
+      "soloClip": {
+        "audio": "/api/audio/st-thomas-sonny-rollins--solo.mp3",
+        "start": 50,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "blue-train-john-coltrane",
@@ -206,7 +238,14 @@
       "soloist": "John Coltrane",
       "instrument": "tenor saxophone",
       "label": "Blue Note",
-      "sourceDuration": 644
+      "sourceDuration": 644,
+      "soloistRole": "Tenor Saxophone",
+      "soloClip": {
+        "audio": "/api/audio/blue-train-john-coltrane--solo.mp3",
+        "start": 62,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "autumn-leaves-cannonball-adderley",
@@ -245,7 +284,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 982633,
-      "sourceDuration": 660
+      "sourceDuration": 660,
+      "soloist": "Cannonball Adderley",
+      "soloistRole": "Alto Saxophone",
+      "soloClip": {
+        "audio": "/api/audio/autumn-leaves-cannonball-adderley--solo.mp3",
+        "start": 158,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "moanin-lee-morgan",
@@ -284,7 +331,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 22227718,
-      "sourceDuration": 582
+      "sourceDuration": 582,
+      "soloist": "Lee Morgan",
+      "soloistRole": "Trumpet",
+      "soloClip": {
+        "audio": "/api/audio/moanin-lee-morgan--solo.mp3",
+        "start": 95,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "freddie-freeloader-wynton-kelly",
@@ -332,7 +387,15 @@
       "verified": true,
       "note": "The one track on Kind Of Blue where Kelly, not Evans, takes the chair.",
       "discogsReleaseId": 4169354,
-      "sourceDuration": 587
+      "sourceDuration": 587,
+      "soloist": "Wynton Kelly",
+      "soloistRole": "Piano",
+      "soloClip": {
+        "audio": "/api/audio/freddie-freeloader-wynton-kelly--solo.mp3",
+        "start": 30,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "so-what-miles-davis",
@@ -379,7 +442,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 4169354,
-      "sourceDuration": 564
+      "sourceDuration": 564,
+      "soloist": "Miles Davis",
+      "soloistRole": "Trumpet",
+      "soloClip": {
+        "audio": "/api/audio/so-what-miles-davis--solo.mp3",
+        "start": 92,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "giant-steps-john-coltrane",
@@ -423,7 +494,15 @@
       "verified": true,
       "note": "Sixteen bars in and already three tonal centres deep.",
       "discogsReleaseId": 5836324,
-      "sourceDuration": 2252
+      "sourceDuration": 2252,
+      "soloist": "John Coltrane",
+      "soloistRole": "Tenor Saxophone",
+      "soloClip": {
+        "audio": "/api/audio/giant-steps-john-coltrane--solo.mp3",
+        "start": 10,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "four-on-six-wes-montgomery",
@@ -458,7 +537,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 1340330,
-      "sourceDuration": 378
+      "sourceDuration": 378,
+      "soloist": "Wes Montgomery",
+      "soloistRole": "Guitar",
+      "soloClip": {
+        "audio": "/api/audio/four-on-six-wes-montgomery--solo.mp3",
+        "start": 47,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "gloria-s-step-scott-lafaro",
@@ -490,7 +577,15 @@
       "verified": true,
       "note": "Recorded eleven days before LaFaro died at twenty-five.",
       "discogsReleaseId": 2559027,
-      "sourceDuration": 370
+      "sourceDuration": 370,
+      "soloist": "Scott LaFaro",
+      "soloistRole": "Bass",
+      "soloClip": {
+        "audio": "/api/audio/gloria-s-step-scott-lafaro--solo.mp3",
+        "start": 130,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "waltz-for-debby-bill-evans",
@@ -521,7 +616,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 3958357,
-      "sourceDuration": 410
+      "sourceDuration": 410,
+      "soloist": "Bill Evans",
+      "soloistRole": "Piano",
+      "soloClip": {
+        "audio": "/api/audio/waltz-for-debby-bill-evans--solo.mp3",
+        "start": 82,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "cheese-cake-dexter-gordon",
@@ -556,7 +659,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 3380665,
-      "sourceDuration": 394
+      "sourceDuration": 394,
+      "soloist": "Dexter Gordon",
+      "soloistRole": "Tenor Saxophone",
+      "soloClip": {
+        "audio": "/api/audio/cheese-cake-dexter-gordon--solo.mp3",
+        "start": 52,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "footprints-wayne-shorter",
@@ -595,7 +706,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 2708015,
-      "sourceDuration": 586
+      "sourceDuration": 586,
+      "soloist": "Wayne Shorter",
+      "soloistRole": "Tenor Saxophone",
+      "soloClip": {
+        "audio": "/api/audio/footprints-wayne-shorter--solo.mp3",
+        "start": 84,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "cantaloupe-island-herbie-hancock",
@@ -630,7 +749,15 @@
       "clipDuration": 40,
       "verified": true,
       "discogsReleaseId": 1102285,
-      "sourceDuration": 333
+      "sourceDuration": 333,
+      "soloist": "Herbie Hancock",
+      "soloistRole": "Piano",
+      "soloClip": {
+        "audio": "/api/audio/cantaloupe-island-herbie-hancock--solo.mp3",
+        "start": 108,
+        "leadIn": 8,
+        "clipDuration": 40
+      }
     },
     {
       "id": "song-for-my-father-horace-silver",
@@ -684,7 +811,9 @@
       "leadIn": 1.176,
       "clipDuration": 40,
       "sourceDuration": 438.393,
-      "verified": true
+      "verified": true,
+      "soloist": "Horace Silver",
+      "soloistRole": "Piano"
     }
   ]
 }
