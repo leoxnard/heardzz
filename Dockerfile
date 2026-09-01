@@ -18,7 +18,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# Git does not carry empty directories, so a clone may arrive without public/.
+# Nothing static lives there today, but the copy below must not depend on that.
+RUN mkdir -p public && npm run build
 
 FROM node:24-slim AS runtime
 WORKDIR /app
