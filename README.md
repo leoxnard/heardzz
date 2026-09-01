@@ -218,8 +218,20 @@ turned away as a data centre.
 | --- | --- |
 | `ADMIN_PASSWORD` | Required in production. Ten characters or more. |
 | `HEARDZZ_DATA_DIR` | Where the library, suggestions and clips live. `/data` in the image. |
-| `GEMINI_API_KEY` | Optional. Lets a model read awkward video titles. |
-| `DISCOGS_TOKEN` | Optional. Lifts Discogs' rate limit; nothing needs it. |
+| `GEMINI_API_KEY` | Optional. Lets a model read video titles the parser cannot split. |
+| `GEMINI_MODEL` | Optional. Defaults to `gemini-2.5-flash`. |
+| `DISCOGS_TOKEN` | Optional. Roughly halves the wait on a lookup. |
+
+Neither key is needed. Without `GEMINI_API_KEY` the title parser handles
+"Artist - Title", which is nearly every upload, and falls back to the channel
+name when there is no separator; a wrong guess is corrected in the form. Without
+`DISCOGS_TOKEN` the lookup is throttled to Discogs' anonymous rate of 25
+requests a minute, which is a few seconds per suggestion — a token raises that
+to 60 and the pause between calls follows it.
+
+The throttle is one queue for the whole process, so several people suggesting
+records at once wait behind each other. That is the main reason to set a
+Discogs token if the site is shared around.
 
 ## Layout
 

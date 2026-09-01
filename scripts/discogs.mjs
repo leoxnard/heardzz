@@ -10,12 +10,23 @@
 const USER_AGENT = "Heardzz/0.1 +https://github.com/leoxnard/heardzz";
 const API = "https://api.discogs.com";
 
-/** Unauthenticated callers get 25 requests a minute. Stay well under it. */
-const THROTTLE_MS = 2600;
+/*
+ * Discogs allows 25 requests a minute without a token and 60 with one. The
+ * pause between calls is set from that rather than fixed, because a single
+ * lookup can be five requests: one search and up to four pressings. Fixed at
+ * the anonymous rate, a token would buy nothing.
+ */
+const THROTTLE_ANONYMOUS_MS = 2600;
+const THROTTLE_WITH_TOKEN_MS = 1100;
+
 let lastCall = 0;
 
 async function call(path) {
-  const wait = Math.max(0, lastCall + THROTTLE_MS - Date.now());
+  const throttle = process.env.DISCOGS_TOKEN
+    ? THROTTLE_WITH_TOKEN_MS
+    : THROTTLE_ANONYMOUS_MS;
+
+  const wait = Math.max(0, lastCall + throttle - Date.now());
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
   lastCall = Date.now();
 
