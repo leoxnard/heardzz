@@ -50,12 +50,16 @@ interface SoloEditorProps {
   solo: Solo;
   /** Every entry cut from the same recording, this one included. */
   siblings: Solo[];
+  /** Switch the editor to one of the siblings. */
+  onSelectSibling: (id: string) => void;
   onRemark: (group: Solo[]) => void;
   onSaved: (solo: Solo) => void;
   onDeleted: (id: string) => void;
 }
 
-export function SoloEditor({ solo, siblings, onRemark, onSaved, onDeleted }: SoloEditorProps) {
+export function SoloEditor({
+  solo, siblings, onSelectSibling, onRemark, onSaved, onDeleted,
+}: SoloEditorProps) {
   const [draft, setDraft] = useState<Solo>(solo);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,11 +164,14 @@ export function SoloEditor({ solo, siblings, onRemark, onSaved, onDeleted }: Sol
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Lookup failed");
+      // A link pasted by hand is a correction, not a fallback — it overwrites
+      // whatever is here, including a year or an album that were wrong.
       setDraft((current) => ({
         ...current,
         personnel: data.personnel,
         discogsReleaseId: data.discogsReleaseId,
-        year: current.year || data.year,
+        year: data.year || current.year,
+        album: data.album || current.album,
       }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Lookup failed");
@@ -217,22 +224,26 @@ export function SoloEditor({ solo, siblings, onRemark, onSaved, onDeleted }: Sol
       </div>
 
       {/* Every entry cut from this recording, so a record with three soloists
-          reads as one record rather than three unrelated rows. */}
+          reads as one record rather than three unrelated rows — and clicking
+          one switches the editor onto it, rather than only naming it. */}
       {siblings.length > 1 && (
         <ul className="mt-6 flex flex-wrap gap-2">
           {siblings.map((sibling) => (
             <li key={sibling.id}>
-              <span
-                className={`type-data inline-flex items-center gap-2 border px-3 py-1 text-xs ${
+              <button
+                type="button"
+                onClick={() => onSelectSibling(sibling.id)}
+                disabled={sibling.id === draft.id}
+                className={`type-data inline-flex items-center gap-2 border px-3 py-1 text-xs transition-colors disabled:cursor-default ${
                   sibling.id === draft.id
                     ? "border-flame text-flame"
-                    : "border-ink-edge text-paper-dim"
+                    : "border-ink-edge text-paper-dim hover:border-paper-faint hover:text-paper"
                 }`}
               >
                 <span className="block h-2 w-2 rounded-full bg-flame" aria-hidden="true" />
                 {sibling.soloist}
                 {sibling.soloAt !== undefined && ` · ${timecode(sibling.soloAt)}`}
-              </span>
+              </button>
             </li>
           ))}
         </ul>

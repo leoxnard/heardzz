@@ -426,6 +426,7 @@ export function LibraryAdmin({
               solo={selected}
               // Everything cut from the same recording is marked together.
               siblings={solos.filter((solo) => solo.youtubeId === selected.youtubeId)}
+              onSelectSibling={setSelectedId}
               onRemark={(group) => setJob({ kind: "remark", solos: group })}
               onSaved={replace}
               onDeleted={(id) => {

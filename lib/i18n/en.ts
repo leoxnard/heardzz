@@ -227,8 +227,11 @@ export const en = {
     note: "Note shown on reveal",
     addSolo: "+ Add a solo at the playhead",
     preview: "Play from the marker",
-    keys: "Space plays six seconds from the selected marker. ← → nudge it a tenth, with shift a second. Drag the lit box on the lower row to move the window.",
+    keys: "Space plays from the selected marker until space stops it. ← → nudge it a tenth, with shift a second. Drag the lit box on the lower row to move the window.",
     details: "Album, year and the band — {n} credited",
+    fixCredits: "Wrong, or nothing found?",
+    fixCreditsHelp:
+      "Paste a Discogs release and fetch it again. This overwrites the album, year and band shown above, even where they were already filled in.",
     save: "Cut and save",
     saveAndNext: "Save and take the next one",
     saving: "Cutting the clips",

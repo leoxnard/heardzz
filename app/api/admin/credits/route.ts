@@ -40,6 +40,8 @@ export async function POST(request: Request) {
       personnel,
       discogsReleaseId: found.id,
       title: found.title,
+      // Discogs titles run "Artist - Album"; the artist half is already known.
+      album: found.title.replace(/^.*?\s+-\s+/, "") || undefined,
       year: Number(found.year) || 0,
       suspect: found.suspect,
     });

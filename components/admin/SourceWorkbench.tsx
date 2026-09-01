@@ -88,6 +88,8 @@ export function SourceWorkbench({
   const [source, setSource] = useState<SourceResult | null>(null);
   const [busy, setBusy] = useState<null | "fetching" | "saving">(null);
   const [error, setError] = useState<string | null>(null);
+  const [correctionLink, setCorrectionLink] = useState("");
+  const [creditsBusy, setCreditsBusy] = useState(false);
 
   const [draft, setDraft] = useState<Draft>({
     artist: seed?.artist ?? "",
@@ -242,8 +244,11 @@ export function SourceWorkbench({
 
       if (event.code === "Space" || event.key === " ") {
         event.preventDefault();
+        // Space is a toggle, not a snippet: it starts playing from the
+        // marker and keeps going until space stops it, or the recording
+        // runs out — there is no fixed length to guess right in advance.
         if (audio.isPlaying) audio.stop();
-        else play(PREVIEW);
+        else play(Math.max(0.5, duration - activeAt));
         return;
       }
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -254,7 +259,7 @@ export function SourceWorkbench({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [source, audio, play, nudge]);
+  }, [source, audio, play, nudge, duration, activeAt]);
 
   /* ---------------- saving ---------------- */
 
@@ -309,6 +314,42 @@ export function SourceWorkbench({
       }).catch(() => {});
     }
     onCancel?.();
+  }
+
+  /**
+   * Re-run the Discogs lookup, pointed at a release chosen by hand.
+   *
+   * The automatic match found during fetch is a guess; this is a correction.
+   * A link pasted here overwrites the band, the album and the year even when
+   * they were already filled in — that is the whole point of pasting one.
+   */
+  async function fetchCredits() {
+    setCreditsBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/credits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artist: draft.artist,
+          song: draft.song,
+          discogs: correctionLink.trim() || undefined,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Lookup failed");
+      setDraft((current) => ({
+        ...current,
+        personnel: data.personnel,
+        discogsReleaseId: data.discogsReleaseId,
+        year: data.year || current.year,
+        album: data.album || current.album,
+      }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Lookup failed");
+    } finally {
+      setCreditsBusy(false);
+    }
   }
 
   /* ---------------- the screen ---------------- */
@@ -629,6 +670,40 @@ export function SourceWorkbench({
             ))}
           </ul>
         )}
+
+        <div className="mt-6 border-t border-ink-edge pt-5">
+          <span className="type-eyebrow text-paper-faint">{t("mark.fixCredits")}</span>
+          <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+            {t("mark.fixCreditsHelp")}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <input
+              type="text"
+              value={correctionLink}
+              onChange={(event) => setCorrectionLink(event.target.value)}
+              placeholder="https://www.discogs.com/release/…"
+              className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-3 text-sm text-paper focus:border-flame focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={fetchCredits}
+              disabled={creditsBusy}
+              className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+            >
+              {creditsBusy ? t("library.lookingUp") : t("library.fetchCredits")}
+            </button>
+          </div>
+          {draft.discogsReleaseId && (
+            <a
+              href={`https://www.discogs.com/release/${draft.discogsReleaseId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="type-data mt-3 inline-block text-xs text-paper-faint underline underline-offset-2 transition-colors hover:text-flame"
+            >
+              discogs release {draft.discogsReleaseId}
+            </a>
+          )}
+        </div>
       </details>
 
       {error && <p className="type-body mt-6 text-sm text-flame">{error}</p>}
