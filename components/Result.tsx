@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { formatSnippet } from "@/lib/audio";
 import { formatCountdown, msUntilTomorrow } from "@/lib/daily";
 import { t } from "@/lib/i18n";
@@ -144,9 +145,17 @@ export function Result({
       </pre>
 
       {isDaily && countdown && (
-        <p className="type-data mt-6 text-xs text-paper-faint">
-          {t("result.nextDaily", { time: countdown })}
-        </p>
+        <>
+          <p className="type-data mt-6 text-xs text-paper-faint">
+            {t("result.nextDaily", { time: countdown })}
+          </p>
+          <Link
+            href="/practice"
+            className="type-eyebrow mt-4 block w-full bg-flame px-5 py-4 text-center text-ink transition-colors duration-150 hover:bg-paper"
+          >
+            {t("result.tryPractice")}
+          </Link>
+        </>
       )}
 
       {!isDaily && onNext && (

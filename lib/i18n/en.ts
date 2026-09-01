@@ -93,6 +93,7 @@ export const en = {
     share: "Copy result",
     shared: "Copied",
     nextDaily: "Next solo in {time}",
+    tryPractice: "Not ready to wait? Play practice mode",
     playAnother: "Play another",
   },
 
