@@ -29,7 +29,7 @@ export const en = {
     giveUp: "Give up",
     artistLabel: "Which artist",
     songLabel: "Which tune",
-    artistPlaceholder: "Start typing a name",
+    artistPlaceholder: "Start typing an artist",
     songPlaceholder: "Start typing a title",
     artistSolved: "Artist found",
     songSolved: "Title found",

@@ -151,20 +151,43 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
 
   const hasGuess = Boolean(artistInput.trim() || songInput.trim());
 
-  const guess = useCallback(() => {
-    if (!round || !solo) return;
-    if (!artistInput.trim() && !songInput.trim()) return;
-    const next = submitGuess(round, solo, { artist: artistInput, song: songInput }, config);
-    setRound(next);
-    if (!next.artistSolved) setArtistInput("");
-    if (!next.songSolved) setSongInput("");
+  /**
+   * Picking a suggestion and submitting are one keystroke, not two — Enter
+   * on a highlighted option both fills the field and checks it. That means
+   * the value being guessed can be newer than React's own state: setState
+   * from the same field is batched, so reading artistInput/songInput back
+   * immediately afterward would see the value from before this keystroke.
+   * An override says what was actually chosen.
+   */
+  const guess = useCallback(
+    (overrides?: { artist?: string; song?: string }) => {
+      if (!round || !solo) return;
+      const artist = overrides?.artist ?? artistInput;
+      const song = overrides?.song ?? songInput;
+      if (!artist.trim() && !song.trim()) return;
 
-    // Put the caret back on whichever half is still open.
-    queueMicrotask(() => {
-      if (!next.artistSolved) artistRef.current?.focus();
-      else if (config.guessSong && !next.songSolved) songRef.current?.focus();
-    });
-  }, [round, solo, artistInput, songInput, config]);
+      const next = submitGuess(round, solo, { artist, song }, config);
+      setRound(next);
+      setArtistInput(next.artistSolved ? artist : "");
+      setSongInput(next.songSolved ? song : "");
+
+      // Put the caret back on whichever half is still open.
+      queueMicrotask(() => {
+        if (!next.artistSolved) artistRef.current?.focus();
+        else if (config.guessSong && !next.songSolved) songRef.current?.focus();
+      });
+    },
+    [round, solo, artistInput, songInput, config],
+  );
+
+  const guessArtist = useCallback(
+    (overrideValue?: string) => guess(overrideValue !== undefined ? { artist: overrideValue } : undefined),
+    [guess],
+  );
+  const guessSong = useCallback(
+    (overrideValue?: string) => guess(overrideValue !== undefined ? { song: overrideValue } : undefined),
+    [guess],
+  );
 
   const skip = useCallback(() => {
     if (!round) return;
@@ -192,11 +215,29 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
    * The guess fields hold focus for most of a round, so a bare letter would be
    * unusable as a shortcut. Space is therefore ignored while typing — Enter and
    * Shift+Enter are the two that have to work from inside a field, and they do.
+   *
+   * An empty field is the exception: focusing a field and immediately hitting
+   * space is a far more common way to ask for the audio than to type a
+   * leading space, so an empty input treats space as play rather than as a
+   * character. The moment there is a single character in it, space types
+   * normally again.
    */
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (panel) return; // the open overlay owns the keyboard
+
+      /*
+       * A key held a moment too long fires again as an OS auto-repeat, and
+       * that second keydown can land after this exact press already changed
+       * what is on screen — solving the last field unmounts the guess
+       * fields, so the repeat lands on <body> rather than the field it
+       * started in. Read there, "Enter" no longer looks like it came from a
+       * field, and on the result screen that means it is taken as a second,
+       * deliberate press asking to move on — skipping the result before it
+       * was ever seen. A single physical press must never do that.
+       */
+      if (event.repeat) return;
 
       const target = event.target as HTMLElement | null;
       const typing =
@@ -205,9 +246,16 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
 
-      if (event.key === " " && !typing) {
-        event.preventDefault();
-        play();
+      // An empty field only changes what space does. Enter still belongs to
+      // the field itself when one is focused — GuessField's own handler
+      // already calls submit() in that case, and treating typing as false
+      // here as well would fire it a second time on the way to window.
+      if (event.key === " ") {
+        const fieldIsEmpty = typing && (target as HTMLInputElement).value === "";
+        if (!typing || fieldIsEmpty) {
+          event.preventDefault();
+          play();
+        }
         return;
       }
 
@@ -302,7 +350,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
                   pool={artistPool}
                   value={artistInput}
                   onChange={setArtistInput}
-                  onSubmit={guess}
+                  onSubmit={guessArtist}
                   solved={round.artistSolved}
                   solvedLabel={t("round.artistSolved")}
                   solvedValue={solo.artist}
@@ -316,7 +364,7 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
                     pool={songPool}
                     value={songInput}
                     onChange={setSongInput}
-                    onSubmit={guess}
+                    onSubmit={guessSong}
                     solved={round.songSolved}
                     solvedLabel={t("round.songSolved")}
                     solvedValue={solo.song}

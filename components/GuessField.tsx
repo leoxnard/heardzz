@@ -17,7 +17,8 @@ interface GuessFieldProps {
   pool: string[];
   value: string;
   onChange: (value: string) => void;
-  onSubmit: () => void;
+  /** Called with an explicit value when Enter accepts a highlighted suggestion. */
+  onSubmit: (overrideValue?: string) => void;
   solved: boolean;
   solvedLabel: string;
   solvedValue?: string;
@@ -73,9 +74,15 @@ export function GuessField({
       setOpen(true);
       setActive((i) => (i <= 0 ? options.length - 1 : i - 1));
     } else if (event.key === "Enter") {
-      if (open && active >= 0 && options[active]) {
+      // A visible highlighted match: take it and check it in one press,
+      // whether it is the pre-selected top match or one arrowed to.
+      if (showList && active >= 0 && options[active]) {
         event.preventDefault();
-        choose(options[active].value);
+        const picked = options[active].value;
+        setOpen(false);
+        setActive(-1);
+        onChange(picked);
+        onSubmit(picked);
       } else {
         onSubmit();
       }
@@ -102,16 +109,33 @@ export function GuessField({
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
-        autoComplete="off"
+        /*
+         * "off" is the standard token, but WebKit has a long-standing bug
+         * where it ignores it on fields it decides look like a name — which
+         * is exactly this field — and offers a macOS Contacts suggestion
+         * instead of the game's own list. An arbitrary token outside the
+         * autofill spec is not recognised as a request for anything, which
+         * Safari and Chrome both then treat as off, reliably.
+         */
+        autoComplete="not-autofillable"
         spellCheck={false}
         disabled={disabled}
         value={value}
         placeholder={placeholder}
         onChange={(event) => {
-          onChange(event.target.value);
+          const next = event.target.value;
+          onChange(next);
           setOpen(true);
-          // Typing invalidates whichever suggestion was highlighted.
-          setActive(-1);
+          /*
+           * The top match is pre-selected on every keystroke, so a single
+           * Enter both fills in the answer and checks it when that top match
+           * is right. Computed here rather than derived from `options` in an
+           * effect: suggest() is pure, and calling it with the value this
+           * keystroke is about to produce keeps active in lockstep with the
+           * list it is indexing into, one render sooner than an effect would.
+           */
+          const upcoming = solved || disabled ? [] : suggest(next, pool);
+          setActive(upcoming.length > 0 ? 0 : -1);
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
