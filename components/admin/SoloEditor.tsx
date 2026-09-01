@@ -298,7 +298,7 @@ export function SoloEditor({ solo, siblings, onRemark, onSaved, onDeleted }: Sol
             onClick={() => preview(seconds)}
             disabled={audio.status !== "ready"}
             className={`type-data border px-4 py-2 text-sm transition-colors disabled:opacity-30 ${
-              seconds === PREVIEW
+              seconds === (playedLength || PREVIEW)
                 ? "border-flame text-flame"
                 : "border-ink-edge text-paper hover:border-flame hover:text-flame"
             }`}

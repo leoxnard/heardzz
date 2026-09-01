@@ -2,23 +2,26 @@
 
 import { useMemo, useState } from "react";
 import { t } from "@/lib/i18n";
+import { tuneKey } from "@/lib/slug";
 import type { Solo } from "@/lib/types";
 
 /* ------------------------------------------------------------------
    The list down the left.
 
    Twenty records fit on a screen and a hundred do not, which is the whole
-   reason this is more than a sorted list now. Searching is the fast path;
-   grouping by recording is the one that matters most, because a tune with
-   three soloists is three entries that belong together and used to read as
-   three unrelated rows.
+   reason this is more than a sorted list now. Searching is the fast path.
+
+   One row per tune, always — three solos off the same tune are one row
+   naming all three, not three unrelated rows, and that holds even when they
+   were cut from different uploads. Grouping buckets those rows into
+   sections; it never re-splits a tune back apart.
    ------------------------------------------------------------------ */
 
 type Sort = "catalog" | "artist" | "song" | "year" | "soloist";
-type Group = "none" | "recording" | "artist" | "verified";
+type Group = "none" | "artist" | "verified";
 
 const SORTS: Sort[] = ["catalog", "artist", "song", "year", "soloist"];
-const GROUPS: Group[] = ["none", "recording", "artist", "verified"];
+const GROUPS: Group[] = ["none", "artist", "verified"];
 
 function normalize(value: string): string {
   return value
@@ -49,20 +52,51 @@ function haystack(solo: Solo): string {
   );
 }
 
+/** One tune, however many solos have been marked on it, off however many uploads. */
+interface Recording {
+  key: string;
+  /** The one that opened the record — lowest catalogue number wins. */
+  lead: Solo;
+  entries: Solo[];
+  verified: boolean;
+  haystack: string;
+}
+
+function groupByTune(solos: Solo[]): Recording[] {
+  const byTune = new Map<string, Solo[]>();
+  for (const solo of solos) {
+    const key = tuneKey(solo.artist, solo.song);
+    const bucket = byTune.get(key);
+    if (bucket) bucket.push(solo);
+    else byTune.set(key, [solo]);
+  }
+
+  return [...byTune.entries()].map(([key, entries]) => {
+    const sorted = [...entries].sort((a, b) => a.catalog.localeCompare(b.catalog));
+    return {
+      key,
+      lead: sorted[0],
+      entries: sorted,
+      verified: entries.every((solo) => solo.verified),
+      haystack: entries.map(haystack).join(" "),
+    };
+  });
+}
+
 function compare(sort: Sort) {
-  return (a: Solo, b: Solo) => {
+  return (a: Recording, b: Recording) => {
     switch (sort) {
       case "artist":
-        return a.artist.localeCompare(b.artist) || a.song.localeCompare(b.song);
+        return a.lead.artist.localeCompare(b.lead.artist) || a.lead.song.localeCompare(b.lead.song);
       case "song":
-        return a.song.localeCompare(b.song) || a.artist.localeCompare(b.artist);
+        return a.lead.song.localeCompare(b.lead.song) || a.lead.artist.localeCompare(b.lead.artist);
       case "year":
         // A record with no year is unknown, not ancient: it sorts last.
-        return (a.year || 9999) - (b.year || 9999) || a.artist.localeCompare(b.artist);
+        return (a.lead.year || 9999) - (b.lead.year || 9999) || a.lead.artist.localeCompare(b.lead.artist);
       case "soloist":
-        return (a.soloist || a.artist).localeCompare(b.soloist || b.artist);
+        return (a.lead.soloist || a.lead.artist).localeCompare(b.lead.soloist || b.lead.artist);
       default:
-        return a.catalog.localeCompare(b.catalog);
+        return a.lead.catalog.localeCompare(b.lead.catalog);
     }
   };
 }
@@ -70,7 +104,7 @@ function compare(sort: Sort) {
 interface Section {
   key: string;
   label: string | null;
-  items: Solo[];
+  items: Recording[];
 }
 
 interface LibraryListProps {
@@ -85,15 +119,17 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
     solos.some((solo) => !solo.verified) ? "unverified" : "all",
   );
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<Sort>("catalog");
-  const [group, setGroup] = useState<Group>("none");
+  const [sort, setSort] = useState<Sort>("artist");
+  const [group, setGroup] = useState<Group>("artist");
+
+  const recordings = useMemo(() => groupByTune(solos), [solos]);
 
   const sections = useMemo<Section[]>(() => {
     const needle = normalize(query.trim());
     // A search is a search: it looks at everything, filter chip or not.
-    const pool = solos.filter((solo) => {
-      if (needle && !haystack(solo).includes(needle)) return false;
-      if (!needle && filter === "unverified" && solo.verified) return false;
+    const pool = recordings.filter((recording) => {
+      if (needle) return recording.haystack.includes(needle);
+      if (filter === "unverified" && recording.verified) return false;
       return true;
     });
 
@@ -101,23 +137,21 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
     if (group === "none") return [{ key: "all", label: null, items: sorted }];
 
     const buckets = new Map<string, Section>();
-    for (const solo of sorted) {
+    for (const recording of sorted) {
       const [key, label] =
-        group === "recording"
-          ? [solo.youtubeId, `${solo.song} — ${solo.artist}`]
-          : group === "artist"
-            ? [solo.artist, solo.artist]
-            : [
-                solo.verified ? "verified" : "unverified",
-                solo.verified ? t("library.verified") : t("library.filterUnverified"),
-              ];
+        group === "artist"
+          ? [recording.lead.artist, recording.lead.artist]
+          : [
+              recording.verified ? "verified" : "unverified",
+              recording.verified ? t("library.verified") : t("library.filterUnverified"),
+            ];
 
       const bucket = buckets.get(key);
-      if (bucket) bucket.items.push(solo);
-      else buckets.set(key, { key, label, items: [solo] });
+      if (bucket) bucket.items.push(recording);
+      else buckets.set(key, { key, label, items: [recording] });
     }
     return [...buckets.values()];
-  }, [solos, query, filter, sort, group]);
+  }, [recordings, query, filter, sort, group]);
 
   const shown = sections.reduce((n, section) => n + section.items.length, 0);
 
@@ -199,37 +233,47 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
               </div>
             )}
             <ul>
-              {section.items.map((solo) => (
-                <li key={solo.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(solo)}
-                    className={`flex w-full items-start gap-3 border-b border-ink-edge px-4 py-3 text-left transition-colors ${
-                      selectedId === solo.id ? "bg-ink-raised" : "hover:bg-ink-raised"
-                    }`}
-                  >
-                    <span
-                      className={`mt-[6px] block h-2 w-2 shrink-0 ${
-                        solo.verified ? "bg-flame-deep" : "bg-flame"
+              {section.items.map((recording) => {
+                // Every name behind this row, the leader first and never twice.
+                const soloists = [
+                  ...new Set(recording.entries.map((solo) => solo.soloist).filter(Boolean)),
+                ];
+                const active = recording.entries.some((solo) => solo.id === selectedId);
+
+                return (
+                  <li key={recording.key}>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(recording.lead)}
+                      className={`flex w-full items-start gap-3 border-b border-ink-edge px-4 py-3 text-left transition-colors ${
+                        active ? "bg-ink-raised" : "hover:bg-ink-raised"
                       }`}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0">
-                      <span className="type-body block truncate text-sm text-paper">
-                        {solo.artist}
+                    >
+                      <span
+                        className={`mt-[6px] block h-2 w-2 shrink-0 ${
+                          recording.verified ? "bg-flame-deep" : "bg-flame"
+                        }`}
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0">
+                        <span className="type-body block truncate text-sm text-paper">
+                          {recording.lead.artist}
+                        </span>
+                        <span className="type-body block truncate text-xs text-paper-dim">
+                          {recording.lead.song}
+                          {soloists.length > 0 &&
+                            !(soloists.length === 1 && soloists[0] === recording.lead.artist) &&
+                            ` · ${soloists.join(", ")}`}
+                        </span>
+                        <span className="type-data mt-1 block text-[0.6rem] text-paper-faint">
+                          {recording.entries.map((solo) => solo.catalog).join(" · ")}
+                          {recording.lead.year ? ` · ${recording.lead.year}` : ""}
+                        </span>
                       </span>
-                      <span className="type-body block truncate text-xs text-paper-dim">
-                        {solo.song}
-                        {solo.soloist && solo.soloist !== solo.artist && ` · ${solo.soloist}`}
-                      </span>
-                      <span className="type-data mt-1 block text-[0.6rem] text-paper-faint">
-                        {solo.catalog}
-                        {solo.year ? ` · ${solo.year}` : ""}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </li>
         ))}

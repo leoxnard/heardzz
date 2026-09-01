@@ -135,7 +135,6 @@ export const en = {
     },
     group: {
       none: "Flat",
-      recording: "By recording",
       artist: "By artist",
       verified: "By state",
     },

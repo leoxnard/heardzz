@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { LIBRARY_PATH } from "./paths";
+import { tuneKey } from "./slug";
 import type { Solo, SoloLibrary } from "./types";
 
 /**
@@ -32,16 +33,6 @@ export async function loadSolos(): Promise<Solo[]> {
   return solos;
 }
 
-/** Same shape slugify produces, so the two agree on what one record is. */
-function slug(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 /**
  * Entries that are already this record.
  *
@@ -54,10 +45,10 @@ export function findDuplicates(
   solos: Solo[],
   record: { youtubeId?: string; artist?: string; song?: string },
 ): Solo[] {
-  const tune = record.artist && record.song ? slug(`${record.song}-${record.artist}`) : null;
+  const tune = record.artist && record.song ? tuneKey(record.artist, record.song) : null;
 
   return solos.filter((solo) => {
     if (record.youtubeId && solo.youtubeId === record.youtubeId) return true;
-    return tune !== null && slug(`${solo.song}-${solo.artist}`) === tune;
+    return tune !== null && tuneKey(solo.artist, solo.song) === tune;
   });
 }
