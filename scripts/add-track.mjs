@@ -41,10 +41,8 @@ const USAGE = `
     --url      <url>         an exact video
 
   Optional
-    --soloist  <name>        who takes this solo; shown on reveal
     --album    <title>
     --year     <yyyy>
-    --label    <name>
     --note     <text>        one line shown on reveal
     --id       <slug>        default: derived from song and soloist
     --verified               mark the timestamp as already checked
@@ -97,10 +95,9 @@ async function main() {
     catalog: library.solos.find((s) => s.id === id)?.catalog ?? nextCatalog(library),
     artist: args.artist,
     song: args.song,
-    soloist: args.soloist || args.artist,
     album: args.album || "",
     year: Number(args.year) || 0,
-    label: args.label || "",
+    personnel: [],
     youtubeId: source.youtubeId,
     soloStart,
     audio: clip.audio,

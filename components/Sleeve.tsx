@@ -56,9 +56,12 @@ export function Sleeve({
             <p className="type-display mt-5 text-[clamp(1.1rem,2.2vw,1.6rem)] text-flame">
               {solo.song}
             </p>
-            <p className="type-body mt-3 text-sm text-paper-dim">
-              {t("result.soloBy")}: {solo.soloist}
-            </p>
+            {solo.album && (
+              <p className="type-body mt-3 text-sm text-paper-dim">
+                {solo.album}
+                {solo.year ? `, ${solo.year}` : ""}
+              </p>
+            )}
           </div>
         ) : (
           <div className="min-w-0">

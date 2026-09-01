@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SourceScrubber } from "./SourceScrubber";
 import { Waveform } from "./Waveform";
 import { useSoloAudio } from "@/lib/audio";
 import { t } from "@/lib/i18n";
@@ -45,7 +46,9 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
   const [draft, setDraft] = useState<Solo>(solo);
   const [busy, setBusy] = useState<null | "saving" | "recutting">(null);
   const [error, setError] = useState<string | null>(null);
-  const [recutAt, setRecutAt] = useState("");
+  const [recutAt, setRecutAt] = useState(Math.round(solo.soloStart));
+  const [discogsLink, setDiscogsLink] = useState("");
+  const [creditsBusy, setCreditsBusy] = useState(false);
   const [playedFrom, setPlayedFrom] = useState<number | null>(null);
   const [playedLength, setPlayedLength] = useState(0);
 
@@ -95,25 +98,59 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
   }
 
   async function recut() {
-    if (!recutAt.trim()) return;
     setBusy("recutting");
     setError(null);
     try {
       const response = await fetch("/api/admin/recut", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: draft.id, soloStart: recutAt.trim() }),
+        body: JSON.stringify({ id: draft.id, soloStart: recutAt }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Re-cut failed");
       setDraft(data);
       onSaved(data);
-      setRecutAt("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Re-cut failed");
     } finally {
       setBusy(null);
     }
+  }
+
+  async function fetchCredits() {
+    setCreditsBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/credits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artist: draft.artist,
+          song: draft.song,
+          discogs: discogsLink.trim() || undefined,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Lookup failed");
+      setDraft((current) => ({
+        ...current,
+        personnel: data.personnel,
+        discogsReleaseId: data.discogsReleaseId,
+        year: current.year || data.year,
+      }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Lookup failed");
+    } finally {
+      setCreditsBusy(false);
+    }
+  }
+
+  function setCredit(index: number, key: "name" | "role", value: string) {
+    setDraft((current) => {
+      const personnel = [...current.personnel];
+      personnel[index] = { ...personnel[index], [key]: value };
+      return { ...current, personnel };
+    });
   }
 
   async function remove() {
@@ -228,38 +265,130 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
       {error && <p className="type-body mt-4 text-sm text-flame">{error}</p>}
 
       <section className="mt-12 border-t border-ink-edge pt-8">
-        <h3 className="type-eyebrow text-flame">{t("library.sourcePreview")}</h3>
+        <h3 className="type-eyebrow text-flame">{t("library.wholeRecording")}</h3>
         <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
-          {t("library.recutHelp")}
+          {t("library.wholeRecordingHelp")}
         </p>
 
-        <div className="mt-4 aspect-video w-full border border-ink-edge">
+        <div className="mt-5">
+          <SourceScrubber
+            duration={draft.sourceDuration ?? 0}
+            windowStart={Math.max(0, draft.soloStart - draft.leadIn)}
+            windowLength={draft.clipDuration}
+            value={recutAt}
+            onChange={setRecutAt}
+          />
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <input
+            type="number"
+            min={0}
+            max={Math.floor(draft.sourceDuration ?? 0)}
+            value={recutAt}
+            onChange={(event) => setRecutAt(Number(event.target.value) || 0)}
+            className="type-data w-24 border border-ink-edge bg-ink-raised px-4 py-3 text-paper focus:border-flame focus:outline-none"
+          />
+          <span className="type-data text-xs text-paper-faint">seconds</span>
+          <button
+            type="button"
+            onClick={recut}
+            disabled={busy !== null || recutAt === Math.round(draft.soloStart)}
+            className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+          >
+            {busy === "recutting" ? t("library.importing") : t("library.recutHere")}
+          </button>
+        </div>
+
+        <div className="mt-6 aspect-video w-full border border-ink-edge">
           <iframe
             title={`${draft.song} source`}
             className="h-full w-full"
-            src={`https://www.youtube-nocookie.com/embed/${draft.youtubeId}?start=${Math.max(0, Math.floor(sourceTime))}`}
+            src={`https://www.youtube-nocookie.com/embed/${draft.youtubeId}?start=${Math.max(0, Math.floor(recutAt))}`}
             allow="encrypted-media"
             referrerPolicy="strict-origin-when-cross-origin"
           />
         </div>
+      </section>
 
-        <div className="mt-4 flex flex-wrap gap-3">
+      <section className="mt-12 border-t border-ink-edge pt-8">
+        <h3 className="type-eyebrow text-flame">
+          {t("library.personnelCount", { n: draft.personnel.length })}
+        </h3>
+
+        <ul className="mt-4 space-y-2">
+          {draft.personnel.map((credit, i) => (
+            <li key={i} className="flex gap-2">
+              <input
+                type="text"
+                value={credit.name}
+                onChange={(event) => setCredit(i, "name", event.target.value)}
+                className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-2 text-sm text-paper focus:border-flame focus:outline-none"
+              />
+              <input
+                type="text"
+                value={credit.role}
+                onChange={(event) => setCredit(i, "role", event.target.value)}
+                className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-2 text-sm text-paper-dim focus:border-flame focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    personnel: current.personnel.filter((_, j) => j !== i),
+                  }))
+                }
+                aria-label={`Remove ${credit.name}`}
+                className="type-data px-2 text-paper-faint transition-colors hover:text-flame"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <button
+          type="button"
+          onClick={() =>
+            setDraft((current) => ({
+              ...current,
+              personnel: [...current.personnel, { name: "", role: "" }],
+            }))
+          }
+          className="type-eyebrow mt-4 w-full border border-ink-edge py-3 text-paper-dim transition-colors hover:border-flame hover:text-flame"
+        >
+          {t("library.addCredit")}
+        </button>
+
+        <div className="mt-6 flex flex-wrap gap-3">
           <input
             type="text"
-            value={recutAt}
-            onChange={(event) => setRecutAt(event.target.value)}
-            placeholder="3:26"
-            className="type-data w-32 border border-ink-edge bg-ink-raised px-4 py-3 text-paper focus:border-flame focus:outline-none"
+            value={discogsLink}
+            onChange={(event) => setDiscogsLink(event.target.value)}
+            placeholder="https://www.discogs.com/release/… (optional)"
+            className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-3 text-sm text-paper focus:border-flame focus:outline-none"
           />
           <button
             type="button"
-            onClick={recut}
-            disabled={busy !== null || !recutAt.trim()}
+            onClick={fetchCredits}
+            disabled={creditsBusy}
             className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
           >
-            {busy === "recutting" ? t("library.importing") : t("library.recut")}
+            {creditsBusy ? t("library.lookingUp") : t("library.fetchCredits")}
           </button>
         </div>
+
+        {draft.discogsReleaseId && (
+          <a
+            href={`https://www.discogs.com/release/${draft.discogsReleaseId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="type-data mt-3 inline-block text-xs text-paper-faint underline underline-offset-2 transition-colors hover:text-flame"
+          >
+            discogs release {draft.discogsReleaseId}
+          </a>
+        )}
       </section>
 
       <section className="mt-12 border-t border-ink-edge pt-8">
@@ -271,13 +400,7 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
             onChange={(v) => field("artist", v)}
           />
           <Text label="Song" value={draft.song} onChange={(v) => field("song", v)} />
-          <Text
-            label="Soloist — shown on reveal"
-            value={draft.soloist}
-            onChange={(v) => field("soloist", v)}
-          />
           <Text label="Album" value={draft.album} onChange={(v) => field("album", v)} />
-          <Text label="Label" value={draft.label} onChange={(v) => field("label", v)} />
           <Text
             label="Year"
             value={draft.year ? String(draft.year) : ""}

@@ -85,15 +85,34 @@ export async function resolveSource(target) {
       "--skip-download",
       "--no-warnings",
       "--print",
-      "%(id)s\t%(title)s\t%(duration)s\t%(uploader)s",
+      "%(id)s\t%(title)s\t%(duration)s\t%(uploader)s\t%(artist)s\t%(track)s\t%(album)s\t%(release_year)s",
       query,
     ],
     { maxBuffer: 1024 * 1024 * 8 },
   );
 
-  const [id, title, duration, uploader] = stdout.trim().split("\n")[0].split("\t");
+  const [id, title, duration, uploader, artist, track, album, year] = stdout
+    .trim()
+    .split("\n")[0]
+    .split("\t");
+
   if (!id) throw new Error(`No video found for "${target}"`);
-  return { youtubeId: id, title, duration: Number(duration) || 0, uploader };
+
+  // yt-dlp prints "NA" for fields the upload does not carry.
+  const real = (value) => (value && value !== "NA" ? value : "");
+
+  return {
+    youtubeId: id,
+    title,
+    duration: Number(duration) || 0,
+    uploader,
+    // Present on YouTube Music and auto-generated "Topic" uploads, absent on
+    // most hand-uploaded videos. Worth taking when it is there.
+    artist: real(artist),
+    track: real(track),
+    album: real(album),
+    year: Number(real(year)) || 0,
+  };
 }
 
 /**
@@ -198,11 +217,21 @@ export async function extractClip({ youtubeId, soloStart, outputId, onProgress }
       output,
     ]);
 
+    const { stdout: sourceProbe } = await run("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      source,
+    ]);
+
     return {
       audio: `/audio/${outputId}.mp3`,
       soloStart: resolvedStart,
       leadIn,
       clipDuration: Number(Number(stdout.trim()).toFixed(3)),
+      // How long the whole recording runs, so the library screen can offer
+      // the rest of it rather than only the window that was cut.
+      sourceDuration: Number(Number(sourceProbe.trim()).toFixed(3)),
       markerLevel: await levelAtMarker(output, leadIn),
     };
   } finally {
@@ -219,14 +248,14 @@ export async function extractClip({ youtubeId, soloStart, outputId, onProgress }
  * kind is the one worth catching automatically, because a hundred-millisecond
  * snippet of silence is indistinguishable from a broken game.
  */
-export async function levelAtMarker(file, marker) {
+export async function levelAtMarker(file, marker, seconds = 2) {
   try {
     const { stderr } = await run(
       "ffmpeg",
       [
         "-hide_banner", "-nostats",
         "-ss", String(marker),
-        "-t", "2",
+        "-t", String(seconds),
         "-i", file,
         "-af", "volumedetect",
         "-f", "null", "-",
@@ -243,23 +272,49 @@ export async function levelAtMarker(file, marker) {
 /** Below this the clip is effectively silent where the round would start. */
 export const SILENT_DBFS = -45;
 
+/** Loudest sample in a file, in dBFS, or null when ffmpeg cannot say. */
+async function peakLevel(file) {
+  try {
+    const { stderr } = await run(
+      "ffmpeg",
+      ["-hide_banner", "-nostats", "-i", file, "-af", "volumedetect", "-f", "null", "-"],
+      { maxBuffer: 1024 * 1024 * 8 },
+    );
+    const match = /max_volume:\s*(-?[\d.]+)/.exec(stderr ?? "");
+    return match ? Number(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Where the music actually begins.
  *
  * "The start of the track" is not reliably second zero: uploads open with
- * dead air, needle drop, or a few frames of encoder padding. Cutting from a
- * detected onset rather than from 0 is the difference between a snippet of
- * music and a snippet of nothing.
+ * dead air, needle drop, or a few frames of encoder padding.
+ *
+ * The threshold is measured against the file's own peak rather than against
+ * a fixed dBFS floor. A 1928 transfer sits far below a modern master, and a
+ * fixed floor reads its opening chorus as silence — which is exactly how an
+ * earlier version of this put the start of West End Blues twelve seconds
+ * into the cornet solo, and did it differently on each download.
  */
 export async function detectAudibleStart(file) {
   try {
+    const peak = await peakLevel(file);
+    // 35 dB below the loudest moment is comfortably above tape hiss and
+    // comfortably below anything anybody is playing.
+    const threshold = peak === null
+      ? SILENT_DBFS
+      : Math.min(-25, Math.max(-60, peak - 35));
+
     const { stderr } = await run(
       "ffmpeg",
       [
         "-hide_banner", "-nostats",
         "-t", "90",
         "-i", file,
-        "-af", `silencedetect=noise=${SILENT_DBFS}dB:d=0.2`,
+        "-af", `silencedetect=noise=${threshold.toFixed(1)}dB:d=0.3`,
         "-f", "null", "-",
       ],
       { maxBuffer: 1024 * 1024 * 8 },
@@ -272,10 +327,32 @@ export async function detectAudibleStart(file) {
     if (!ends) return 0;
 
     // Back off a hair so the first attack is not shaved off.
-    return Math.max(0, Number(Number(ends[1]) - 0.05).toFixed(3));
+    return Number(Math.max(0, Number(ends[1]) - 0.05).toFixed(3));
   } catch {
     return 0;
   }
+}
+
+/**
+ * Does this point look like the start of something?
+ *
+ * Sound at the marker, and markedly less of it just before. A marker dropped
+ * into the middle of a solo passes the first test and fails this one.
+ */
+export async function looksLikeAnOnset(file, marker) {
+  const after = await levelAtMarker(file, marker);
+  if (after === null || after < SILENT_DBFS) return false;
+
+  // The comparison window has to end at the marker, not straddle it, or it
+  // measures the very music it is supposed to be the run-up to. With less
+  // than half a second of run-up there is nothing to compare against and the
+  // question does not arise.
+  const runUp = Math.min(1.5, marker);
+  if (runUp < 0.5) return true;
+
+  const before = await levelAtMarker(file, marker - runUp, runUp);
+  if (before === null) return true;
+  return before < after - 8;
 }
 
 /* ------------------------------------------------------------------

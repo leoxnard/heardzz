@@ -12,8 +12,10 @@
    ------------------------------------------------------------------ */
 
 import {
-  checkTools, extractClip, readLibrary, writeLibrary, SILENT_DBFS, formatTimecode,
+  checkTools, extractClip, readLibrary, writeLibrary, looksLikeAnOnset,
+  SILENT_DBFS, formatTimecode, AUDIO_DIR,
 } from "./extract.mjs";
+import path from "node:path";
 
 function parseArgs(argv) {
   const args = {};
@@ -75,8 +77,17 @@ async function main() {
       solo.verified = target === "opening";
 
       if (clip.markerLevel !== null && clip.markerLevel < SILENT_DBFS) {
-        silent.push(`${solo.artist} — ${solo.song}`);
+        silent.push(`${solo.artist} — ${solo.song}  (silent at ${formatTimecode(clip.soloStart)})`);
         console.log(`SILENT (${clip.markerLevel} dB)`);
+      } else if (
+        target === "opening" &&
+        !(await looksLikeAnOnset(path.join(AUDIO_DIR, `${solo.id}.mp3`), clip.leadIn))
+      ) {
+        // Sound at the marker but no step up into it: the cut landed inside
+        // the music rather than at the head of it.
+        solo.verified = false;
+        silent.push(`${solo.artist} — ${solo.song}  (starts mid-music at ${formatTimecode(clip.soloStart)})`);
+        console.log(`from ${formatTimecode(clip.soloStart)}  NOT AN OPENING`);
       } else {
         console.log(`ok  from ${formatTimecode(clip.soloStart)}`);
       }
@@ -91,7 +102,8 @@ async function main() {
   console.log(`\n  ${library.solos.length - failed.length} re-cut, ${failed.length} failed.`);
   if (failed.length) for (const name of failed) console.log(`    ${name}`);
   if (silent.length) {
-    console.log("\n  Still silent where the round starts — check these at /admin:");
+    console.log("\n  These did not land on the head of the tune. They are marked");
+    console.log("  unconfirmed; fix them at /admin:");
     for (const name of silent) console.log(`    ${name}`);
   }
   console.log("");

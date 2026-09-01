@@ -6,277 +6,631 @@
       "catalog": "HZ-1501",
       "artist": "Louis Armstrong",
       "song": "West End Blues",
-      "soloist": "Louis Armstrong",
       "album": "The Hot Fives & Hot Sevens",
       "year": 1928,
-      "label": "OKeh",
+      "personnel": [
+        {
+          "name": "Earl Hines",
+          "role": "Piano"
+        },
+        {
+          "name": "Fred Robinson",
+          "role": "Trombone"
+        },
+        {
+          "name": "Jimmy Strong",
+          "role": "Clarinet, Tenor Saxophone"
+        },
+        {
+          "name": "Louis Armstrong",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Mancy Carr",
+          "role": "Banjo"
+        },
+        {
+          "name": "Zutty Singleton",
+          "role": "Drums"
+        }
+      ],
       "youtubeId": "pXHdqTVC3cA",
-      "soloStart": 5.154,
+      "soloStart": 5.166,
+      "soloAt": 5.2,
       "audio": "/audio/west-end-blues-louis-armstrong.mp3",
-      "leadIn": 5.154,
+      "leadIn": 5.166,
       "clipDuration": 40,
       "verified": true,
       "note": "The unaccompanied opening cadenza — twelve seconds that reset what a jazz solo could be.",
-      "soloAt": 5.2
+      "instrument": "trumpet",
+      "discogsReleaseId": 19434874,
+      "sourceDuration": 195
     },
     {
       "id": "ko-ko-charlie-parker",
       "catalog": "HZ-1502",
       "artist": "Charlie Parker",
       "song": "Ko Ko",
-      "soloist": "Charlie Parker",
-      "album": "The Savoy Recordings",
+      "album": "The Charlie Parker Story",
       "year": 1945,
-      "label": "Savoy",
+      "personnel": [
+        {
+          "name": "Bud Powell",
+          "role": "Piano"
+        },
+        {
+          "name": "Charlie Parker",
+          "role": "Alto Saxophone"
+        },
+        {
+          "name": "Curly Russell",
+          "role": "Bass"
+        },
+        {
+          "name": "Max Roach",
+          "role": "Drums"
+        },
+        {
+          "name": "Miles Davis",
+          "role": "Trumpet"
+        }
+      ],
       "youtubeId": "okrNwE6GI70",
-      "soloStart": 0.359,
+      "soloStart": 0.361,
+      "soloAt": 26,
       "audio": "/audio/ko-ko-charlie-parker.mp3",
-      "leadIn": 0.359,
+      "leadIn": 0.361,
       "clipDuration": 40,
       "verified": true,
       "note": "Cherokee's changes at a tempo nobody had taken them before.",
-      "soloAt": 26
+      "instrument": "alto saxophone",
+      "sourceDuration": 180,
+      "discogsReleaseId": 19212586
     },
     {
       "id": "joy-spring-clifford-brown",
       "catalog": "HZ-1503",
       "artist": "Clifford Brown",
       "song": "Joy Spring",
-      "soloist": "Clifford Brown",
       "album": "Clifford Brown and Max Roach",
       "year": 1954,
-      "label": "EmArcy",
+      "personnel": [
+        {
+          "name": "Clifford Brown",
+          "role": "Trumpet"
+        },
+        {
+          "name": "George Morrow",
+          "role": "Bass"
+        },
+        {
+          "name": "Harold Land",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Max Roach",
+          "role": "Drums"
+        },
+        {
+          "name": "Richie Powell",
+          "role": "Piano"
+        }
+      ],
       "youtubeId": "dnK6OHPQZbA",
       "soloStart": 0,
+      "soloAt": 47,
       "audio": "/audio/joy-spring-clifford-brown.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 47
+      "instrument": "trumpet",
+      "discogsReleaseId": 15353329,
+      "sourceDuration": 411
     },
     {
       "id": "st-thomas-sonny-rollins",
       "catalog": "HZ-1504",
       "artist": "Sonny Rollins",
       "song": "St. Thomas",
-      "soloist": "Sonny Rollins",
       "album": "Saxophone Colossus",
       "year": 1956,
-      "label": "Prestige",
+      "personnel": [
+        {
+          "name": "Doug Watkins",
+          "role": "Bass"
+        },
+        {
+          "name": "Max Roach",
+          "role": "Drums"
+        },
+        {
+          "name": "Sonny Rollins",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Tommy Flanagan",
+          "role": "Piano"
+        }
+      ],
       "youtubeId": "fdakJqKPRDE",
-      "soloStart": 16.913,
+      "soloStart": 0,
+      "soloAt": 50,
       "audio": "/audio/st-thomas-sonny-rollins.mp3",
-      "leadIn": 16.913,
+      "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 50
+      "discogsReleaseId": 3934932,
+      "sourceDuration": 408
     },
     {
       "id": "blue-train-john-coltrane",
       "catalog": "HZ-1506",
       "artist": "John Coltrane",
       "song": "Blue Train",
-      "soloist": "John Coltrane",
       "album": "Blue Train",
       "year": 1957,
-      "label": "Blue Note",
+      "personnel": [
+        {
+          "name": "\"Philly\" Joe Jones",
+          "role": "Drums"
+        },
+        {
+          "name": "Curtis Fuller",
+          "role": "Trombone"
+        },
+        {
+          "name": "John Coltrane",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Kenny Drew",
+          "role": "Piano"
+        },
+        {
+          "name": "Lee Morgan",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Paul Chambers",
+          "role": "Bass"
+        }
+      ],
       "youtubeId": "HT_Zs5FKDZE",
-      "soloStart": 0.974,
+      "soloStart": 0.978,
+      "soloAt": 62,
       "audio": "/audio/blue-train-john-coltrane.mp3",
-      "leadIn": 0.974,
+      "leadIn": 0.978,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 62
+      "discogsReleaseId": 5193282,
+      "soloist": "John Coltrane",
+      "instrument": "tenor saxophone",
+      "label": "Blue Note",
+      "sourceDuration": 644
     },
     {
       "id": "autumn-leaves-cannonball-adderley",
       "catalog": "HZ-1508",
       "artist": "Cannonball Adderley",
       "song": "Autumn Leaves",
-      "soloist": "Cannonball Adderley",
       "album": "Somethin' Else",
       "year": 1958,
-      "label": "Blue Note",
+      "personnel": [
+        {
+          "name": "Art Blakey",
+          "role": "Drums"
+        },
+        {
+          "name": "Cannonball Adderley",
+          "role": "Alto Saxophone"
+        },
+        {
+          "name": "Hank Jones",
+          "role": "Piano"
+        },
+        {
+          "name": "Miles Davis",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Sam Jones",
+          "role": "Bass"
+        }
+      ],
       "youtubeId": "CpB7-8SGlJ0",
-      "soloStart": 1.068,
+      "soloStart": 1.08,
+      "soloAt": 158,
       "audio": "/audio/autumn-leaves-cannonball-adderley.mp3",
-      "leadIn": 1.068,
+      "leadIn": 1.08,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 158
+      "discogsReleaseId": 982633,
+      "sourceDuration": 660
     },
     {
       "id": "moanin-lee-morgan",
       "catalog": "HZ-1509",
       "artist": "Art Blakey",
       "song": "Moanin'",
-      "soloist": "Lee Morgan",
       "album": "Moanin'",
       "year": 1958,
-      "label": "Blue Note",
+      "personnel": [
+        {
+          "name": "Art Blakey",
+          "role": "Drums"
+        },
+        {
+          "name": "Benny Golson",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Bobby Timmons",
+          "role": "Piano"
+        },
+        {
+          "name": "Jymie Merritt",
+          "role": "Bass"
+        },
+        {
+          "name": "Lee Morgan",
+          "role": "Trumpet"
+        }
+      ],
       "youtubeId": "Cv9NSR-2DwM",
-      "soloStart": 0.206,
+      "soloStart": 0,
+      "soloAt": 95,
       "audio": "/audio/moanin-lee-morgan.mp3",
-      "leadIn": 0.206,
+      "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 95
+      "discogsReleaseId": 22227718,
+      "sourceDuration": 582
     },
     {
       "id": "freddie-freeloader-wynton-kelly",
       "catalog": "HZ-1510",
       "artist": "Miles Davis",
       "song": "Freddie Freeloader",
-      "soloist": "Wynton Kelly",
       "album": "Kind Of Blue",
       "year": 1959,
-      "label": "Columbia",
+      "personnel": [
+        {
+          "name": "Bill Evans",
+          "role": "Piano"
+        },
+        {
+          "name": "Cannonball Adderley",
+          "role": "Alto Saxophone"
+        },
+        {
+          "name": "Jimmy Cobb",
+          "role": "Drums"
+        },
+        {
+          "name": "John Coltrane",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Miles Davis",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Paul Chambers",
+          "role": "Bass"
+        },
+        {
+          "name": "Wynton Kelly",
+          "role": "Piano"
+        }
+      ],
       "youtubeId": "ZZcuSBouhVA",
-      "soloStart": 0.591,
+      "soloStart": 0.6,
+      "soloAt": 30,
       "audio": "/audio/freddie-freeloader-wynton-kelly.mp3",
-      "leadIn": 0.591,
+      "leadIn": 0.6,
       "clipDuration": 40,
       "verified": true,
       "note": "The one track on Kind Of Blue where Kelly, not Evans, takes the chair.",
-      "soloAt": 30
+      "discogsReleaseId": 4169354,
+      "sourceDuration": 587
     },
     {
       "id": "so-what-miles-davis",
       "catalog": "HZ-1511",
       "artist": "Miles Davis",
       "song": "So What",
-      "soloist": "Miles Davis",
       "album": "Kind Of Blue",
       "year": 1959,
-      "label": "Columbia",
+      "personnel": [
+        {
+          "name": "Bill Evans",
+          "role": "Piano"
+        },
+        {
+          "name": "Cannonball Adderley",
+          "role": "Alto Saxophone"
+        },
+        {
+          "name": "Jimmy Cobb",
+          "role": "Drums"
+        },
+        {
+          "name": "John Coltrane",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Miles Davis",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Paul Chambers",
+          "role": "Bass"
+        },
+        {
+          "name": "Wynton Kelly",
+          "role": "Piano"
+        }
+      ],
       "youtubeId": "ylXk1LBvIqU",
-      "soloStart": 1.013,
+      "soloStart": 1.037,
+      "soloAt": 92,
       "audio": "/audio/so-what-miles-davis.mp3",
-      "leadIn": 1.013,
+      "leadIn": 1.037,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 92
+      "discogsReleaseId": 4169354,
+      "sourceDuration": 564
     },
     {
       "id": "giant-steps-john-coltrane",
       "catalog": "HZ-1514",
       "artist": "John Coltrane",
       "song": "Giant Steps",
-      "soloist": "John Coltrane",
       "album": "Giant Steps",
       "year": 1960,
-      "label": "Atlantic",
+      "personnel": [
+        {
+          "name": "Art Taylor",
+          "role": "Drums"
+        },
+        {
+          "name": "Jimmy Cobb",
+          "role": "Drums"
+        },
+        {
+          "name": "John Coltrane",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Paul Chambers",
+          "role": "Bass"
+        },
+        {
+          "name": "Tommy Flanagan",
+          "role": "Piano"
+        },
+        {
+          "name": "Wynton Kelly",
+          "role": "Piano"
+        }
+      ],
       "youtubeId": "xy_fxxj1mMY",
       "soloStart": 0,
+      "soloAt": 10,
       "audio": "/audio/giant-steps-john-coltrane.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
       "note": "Sixteen bars in and already three tonal centres deep.",
-      "soloAt": 10
+      "discogsReleaseId": 5836324,
+      "sourceDuration": 2252
     },
     {
       "id": "four-on-six-wes-montgomery",
       "catalog": "HZ-1515",
       "artist": "Wes Montgomery",
       "song": "Four On Six",
-      "soloist": "Wes Montgomery",
       "album": "The Incredible Jazz Guitar",
       "year": 1960,
-      "label": "Riverside",
+      "personnel": [
+        {
+          "name": "Albert Heath",
+          "role": "Drums"
+        },
+        {
+          "name": "Percy Heath",
+          "role": "Bass"
+        },
+        {
+          "name": "Tommy Flanagan",
+          "role": "Piano"
+        },
+        {
+          "name": "Wes Montgomery",
+          "role": "Guitar"
+        }
+      ],
       "youtubeId": "BqLDTKun4so",
-      "soloStart": 0.302,
+      "soloStart": 0.34,
+      "soloAt": 47,
       "audio": "/audio/four-on-six-wes-montgomery.mp3",
-      "leadIn": 0.302,
+      "leadIn": 0.34,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 47
+      "discogsReleaseId": 1340330,
+      "sourceDuration": 378
     },
     {
       "id": "gloria-s-step-scott-lafaro",
       "catalog": "HZ-1516",
       "artist": "Bill Evans",
       "song": "Gloria's Step",
-      "soloist": "Scott LaFaro",
       "album": "Sunday At The Village Vanguard",
       "year": 1961,
-      "label": "Riverside",
+      "personnel": [
+        {
+          "name": "Bill Evans",
+          "role": "Piano"
+        },
+        {
+          "name": "Paul Motian",
+          "role": "Drums"
+        },
+        {
+          "name": "Scott LaFaro",
+          "role": "Bass"
+        }
+      ],
       "youtubeId": "rARGPAkIcw4",
-      "soloStart": 0.542,
+      "soloStart": 0.544,
+      "soloAt": 130,
       "audio": "/audio/gloria-s-step-scott-lafaro.mp3",
-      "leadIn": 0.542,
+      "leadIn": 0.544,
       "clipDuration": 40,
       "verified": true,
       "note": "Recorded eleven days before LaFaro died at twenty-five.",
-      "soloAt": 130
+      "discogsReleaseId": 2559027,
+      "sourceDuration": 370
     },
     {
       "id": "waltz-for-debby-bill-evans",
       "catalog": "HZ-1517",
       "artist": "Bill Evans",
       "song": "Waltz For Debby",
-      "soloist": "Bill Evans",
       "album": "Waltz For Debby",
       "year": 1961,
-      "label": "Riverside",
+      "personnel": [
+        {
+          "name": "Bill Evans",
+          "role": "Piano"
+        },
+        {
+          "name": "Paul Motian",
+          "role": "Drums"
+        },
+        {
+          "name": "Scott LaFaro",
+          "role": "Bass"
+        }
+      ],
       "youtubeId": "PQmZctWwsCE",
       "soloStart": 0,
+      "soloAt": 82,
       "audio": "/audio/waltz-for-debby-bill-evans.mp3",
       "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 82
+      "discogsReleaseId": 3958357,
+      "sourceDuration": 410
     },
     {
       "id": "cheese-cake-dexter-gordon",
       "catalog": "HZ-1518",
       "artist": "Dexter Gordon",
       "song": "Cheese Cake",
-      "soloist": "Dexter Gordon",
-      "album": "Go",
+      "album": "Go!",
       "year": 1962,
-      "label": "Blue Note",
+      "personnel": [
+        {
+          "name": "Billy Higgins",
+          "role": "Drums"
+        },
+        {
+          "name": "Butch Warren",
+          "role": "Bass"
+        },
+        {
+          "name": "Dexter Gordon",
+          "role": "Tenor Saxophone"
+        },
+        {
+          "name": "Sonny Clark",
+          "role": "Piano"
+        }
+      ],
       "youtubeId": "hkyJQcmVtZQ",
-      "soloStart": 1.114,
+      "soloStart": 1.119,
+      "soloAt": 52,
       "audio": "/audio/cheese-cake-dexter-gordon.mp3",
-      "leadIn": 1.114,
+      "leadIn": 1.119,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 52
+      "discogsReleaseId": 3380665,
+      "sourceDuration": 394
     },
     {
       "id": "footprints-wayne-shorter",
       "catalog": "HZ-1519",
       "artist": "Miles Davis",
       "song": "Footprints",
-      "soloist": "Wayne Shorter",
       "album": "Miles Smiles",
       "year": 1966,
-      "label": "Columbia",
+      "personnel": [
+        {
+          "name": "Anthony Williams",
+          "role": "Drums"
+        },
+        {
+          "name": "Herbie Hancock",
+          "role": "Piano"
+        },
+        {
+          "name": "Miles Davis",
+          "role": "Trumpet"
+        },
+        {
+          "name": "Ron Carter",
+          "role": "Bass"
+        },
+        {
+          "name": "Wayne Shorter",
+          "role": "Tenor Saxophone"
+        }
+      ],
       "youtubeId": "O-rrt8IYhe0",
-      "soloStart": 0.19,
+      "soloStart": 0,
+      "soloAt": 84,
       "audio": "/audio/footprints-wayne-shorter.mp3",
-      "leadIn": 0.19,
+      "leadIn": 0,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 84
+      "discogsReleaseId": 2708015,
+      "sourceDuration": 586
     },
     {
       "id": "cantaloupe-island-herbie-hancock",
       "catalog": "HZ-1520",
       "artist": "Herbie Hancock",
       "song": "Cantaloupe Island",
-      "soloist": "Herbie Hancock",
       "album": "Empyrean Isles",
       "year": 1964,
-      "label": "Blue Note",
+      "personnel": [
+        {
+          "name": "Anthony Williams",
+          "role": "Drums"
+        },
+        {
+          "name": "Freddie Hubbard",
+          "role": "Cornet"
+        },
+        {
+          "name": "Herbie Hancock",
+          "role": "Piano"
+        },
+        {
+          "name": "Ron Carter",
+          "role": "Bass"
+        }
+      ],
       "youtubeId": "W5Ug0e_t4ew",
-      "soloStart": 1.96,
+      "soloStart": 1.961,
+      "soloAt": 108,
       "audio": "/audio/cantaloupe-island-herbie-hancock.mp3",
-      "leadIn": 1.96,
+      "leadIn": 1.961,
       "clipDuration": 40,
       "verified": true,
-      "soloAt": 108
+      "discogsReleaseId": 1102285,
+      "sourceDuration": 333
     }
   ]
 }

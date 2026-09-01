@@ -3,7 +3,7 @@ import {
   checkTools, extractClip, nextCatalog, parseTimecode, readLibrary, resolveSource, slugify, upsertSolo,
 } from "@/scripts/extract.mjs";
 import { blockedInProduction } from "@/lib/admin-guard";
-import type { Solo } from "@/lib/types";
+import type { Credit, Solo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 // Downloading and re-encoding a track is not a two-second operation.
@@ -13,12 +13,14 @@ interface ImportBody {
   target: string;
   artist: string;
   song: string;
-  solo: string;
-  soloist?: string;
+  /** Where the round starts. Omit or pass "opening" for the top of the tune. */
+  solo?: string;
   album?: string;
   year?: string | number;
-  label?: string;
   note?: string;
+  /** Carried over from the lookup so the credits are not fetched twice. */
+  personnel?: Credit[];
+  discogsReleaseId?: number;
 }
 
 export async function POST(request: Request) {
@@ -38,17 +40,18 @@ export async function POST(request: Request) {
   try {
     await checkTools();
 
-    const soloStart = parseTimecode(body.solo ?? 0);
+    const wantsOpening = !body.solo || body.solo === "opening";
+    const soloStart = wantsOpening ? "opening" : parseTimecode(body.solo);
     const id = slugify(`${body.song}-${body.artist}`);
 
     const source = await resolveSource(body.target.trim());
 
-    if (source.duration && soloStart > source.duration) {
+    if (typeof soloStart === "number" && source.duration && soloStart > source.duration) {
       return NextResponse.json(
         {
           error:
-            `The solo time is past the end of "${source.title}", ` +
-            `which runs ${Math.floor(source.duration / 60)}:${String(Math.floor(source.duration % 60)).padStart(2, "0")}.`,
+            `That time is past the end of "${source.title}", which runs ` +
+            `${Math.floor(source.duration / 60)}:${String(Math.floor(source.duration % 60)).padStart(2, "0")}.`,
         },
         { status: 400 },
       );
@@ -63,16 +66,17 @@ export async function POST(request: Request) {
       catalog: existing?.catalog ?? nextCatalog(library),
       artist: body.artist.trim(),
       song: body.song.trim(),
-      soloist: body.soloist?.trim() || body.artist.trim(),
       album: body.album?.trim() || "",
       year: Number(body.year) || 0,
-      label: body.label?.trim() || "",
+      personnel: Array.isArray(body.personnel) ? body.personnel : [],
+      discogsReleaseId: body.discogsReleaseId,
       youtubeId: source.youtubeId,
-      soloStart,
+      soloStart: clip.soloStart,
       audio: clip.audio,
       leadIn: clip.leadIn,
       clipDuration: clip.clipDuration,
-      verified: false,
+      sourceDuration: clip.sourceDuration,
+      verified: wantsOpening,
       note: body.note?.trim() || undefined,
     };
 

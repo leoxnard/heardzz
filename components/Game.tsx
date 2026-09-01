@@ -31,7 +31,6 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
   const [panel, setPanel] = useState<"settings" | "stats" | null>(null);
   const [artistInput, setArtistInput] = useState("");
   const [songInput, setSongInput] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
 
   // Filtering can empty the pool entirely; falling back beats a blank screen.
   const pool = useMemo(() => {
@@ -150,13 +149,11 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
   );
   const songPool = useMemo(() => buildPool(SONGS, solos.map((s) => s.song)), [solos]);
 
+  const hasGuess = Boolean(artistInput.trim() || songInput.trim());
+
   const guess = useCallback(() => {
     if (!round || !solo) return;
-    if (!artistInput.trim() && !songInput.trim()) {
-      setNotice(t("round.noGuess"));
-      return;
-    }
-    setNotice(null);
+    if (!artistInput.trim() && !songInput.trim()) return;
     const next = submitGuess(round, solo, { artist: artistInput, song: songInput }, config);
     setRound(next);
     if (!next.artistSolved) setArtistInput("");
@@ -171,10 +168,23 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
 
   const skip = useCallback(() => {
     if (!round) return;
-    setNotice(null);
     audio.stop();
     setRound(skipAttempt(round, config));
   }, [round, audio, config]);
+
+  /**
+   * One action rather than two.
+   *
+   * Guessing and skipping both spend an attempt and both unlock the next
+   * rung; the only difference is whether what you typed is recorded. Two
+   * buttons side by side meant typing an answer and then throwing it away by
+   * pressing the wrong one. So the control follows the fields: with something
+   * in them it guesses, with nothing in them it skips.
+   */
+  const submit = useCallback(() => {
+    if (artistInput.trim() || songInput.trim()) guess();
+    else skip();
+  }, [artistInput, songInput, guess, skip]);
 
   /**
    * Keyboard control.
@@ -220,13 +230,13 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
       // A field with an open suggestion list handles its own Enter.
       if (!typing) {
         event.preventDefault();
-        guess();
+        submit();
       }
     }
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [panel, play, skip, guess, revealed, mode, nextPractice]);
+  }, [panel, play, skip, submit, revealed, mode, nextPractice]);
 
   if (!solo || !round) {
     return <EmptyState hasSolos={solos.length > 0} />;
@@ -320,24 +330,17 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
                 )}
               </div>
 
-              {notice && <p className="type-body mt-4 text-sm text-flame">{notice}</p>}
-
-              <div className="mt-7 flex gap-3">
-                <button
-                  type="button"
-                  onClick={skip}
-                  className="type-eyebrow flex-1 border border-ink-edge px-5 py-4 text-paper-dim transition-colors duration-150 hover:border-paper-faint hover:text-paper"
-                >
-                  {t("round.skip")}
-                </button>
-                <button
-                  type="button"
-                  onClick={guess}
-                  className="type-eyebrow flex-[2] bg-flame px-5 py-4 text-ink transition-colors duration-150 hover:bg-paper"
-                >
-                  {t("round.submit")}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={submit}
+                className={`type-eyebrow mt-7 w-full px-5 py-4 transition-colors duration-150 ${
+                  hasGuess
+                    ? "bg-flame text-ink hover:bg-paper"
+                    : "border border-ink-edge text-paper-dim hover:border-paper-faint hover:text-paper"
+                }`}
+              >
+                {hasGuess ? t("round.submit") : t("round.skip")}
+              </button>
 
               <p className="type-data mt-3 text-xs text-paper-faint">
                 {t("round.keysHint")}

@@ -63,17 +63,30 @@ export function Result({
           <dd className="type-display mt-2 text-3xl text-paper">{solo.song}</dd>
           <dd className="type-body mt-1 text-sm text-paper-dim">{solo.album}</dd>
         </div>
-        <div className="border-b border-ink-edge py-4">
-          <dt className="type-eyebrow text-paper-faint">{t("result.soloBy")}</dt>
-          <dd className="type-body mt-2 text-base text-paper-dim">
-            {solo.soloist}
-          </dd>
-        </div>
+        {solo.personnel.length > 0 && (
+          <div className="border-b border-ink-edge py-4">
+            <dt className="type-eyebrow text-paper-faint">{t("result.personnel")}</dt>
+            <dd className="mt-3">
+              <ul className="space-y-1">
+                {solo.personnel.map((credit) => (
+                  <li key={credit.name} className="flex flex-wrap gap-x-3 text-sm">
+                    <span className="type-body text-paper">{credit.name}</span>
+                    {credit.role && (
+                      <span className="type-body text-paper-faint">{credit.role}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        )}
       </dl>
 
-      <p className="type-data mt-4 text-xs text-paper-faint">
-        {t("result.recordedIn", { year: solo.year || "—", label: solo.label || "—" })}
-      </p>
+      {solo.year > 0 && (
+        <p className="type-data mt-4 text-xs text-paper-faint">
+          {t("result.recordedIn", { year: solo.year })}
+        </p>
+      )}
 
       {solo.note && (
         <p className="type-body mt-6 border-l-2 border-flame pl-4 text-sm text-paper-dim">

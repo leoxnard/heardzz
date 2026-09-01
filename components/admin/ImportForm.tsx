@@ -2,106 +2,202 @@
 
 import { useState } from "react";
 import { t } from "@/lib/i18n";
-import type { Solo } from "@/lib/types";
+import type { Credit, Solo } from "@/lib/types";
 
-const BLANK = {
-  target: "",
-  artist: "",
-  song: "",
-  soloist: "",
-  solo: "",
-  album: "",
-  year: "",
-  label: "",
-  note: "",
-};
+/* ------------------------------------------------------------------
+   Adding a record.
+
+   One field to begin with. Paste a link, and the artist, title, album,
+   year and the band on the date are filled in before you are asked for
+   anything else. Everything found stays editable, and a Discogs link can
+   be handed over when the automatic match picks the wrong pressing.
+   ------------------------------------------------------------------ */
+
+interface Draft {
+  youtubeId: string;
+  sourceTitle: string;
+  sourceDuration: number;
+  artist: string;
+  song: string;
+  album: string;
+  year: number;
+  personnel: Credit[];
+  discogsReleaseId?: number;
+  notes: string[];
+}
 
 export function ImportForm({ onImported }: { onImported: (solo: Solo) => void }) {
-  const [form, setForm] = useState(BLANK);
-  const [busy, setBusy] = useState(false);
+  const [target, setTarget] = useState("");
+  const [discogs, setDiscogs] = useState("");
+  const [note, setNote] = useState("");
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [busy, setBusy] = useState<null | "looking" | "adding">(null);
   const [error, setError] = useState<string | null>(null);
 
-  function set<K extends keyof typeof BLANK>(key: K, value: (typeof BLANK)[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+  async function look(event?: React.FormEvent) {
+    event?.preventDefault();
+    if (!target.trim()) return;
+
+    setBusy("looking");
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/inspect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: target.trim(), discogs: discogs.trim() || undefined }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Lookup failed");
+      setDraft(data as Draft);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Lookup failed");
+    } finally {
+      setBusy(null);
+    }
   }
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
+  async function add() {
+    if (!draft) return;
+    setBusy("adding");
     setError(null);
     try {
       const response = await fetch("/api/admin/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          target: `https://www.youtube.com/watch?v=${draft.youtubeId}`,
+          artist: draft.artist,
+          song: draft.song,
+          album: draft.album,
+          year: draft.year,
+          personnel: draft.personnel,
+          discogsReleaseId: draft.discogsReleaseId,
+          note: note.trim() || undefined,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Import failed");
       onImported(data.solo as Solo);
-      setForm(BLANK);
+      setTarget("");
+      setDiscogs("");
+      setNote("");
+      setDraft(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Import failed");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
+  function field<K extends keyof Draft>(key: K, value: Draft[K]) {
+    setDraft((current) => (current ? { ...current, [key]: value } : current));
+  }
+
   return (
-    <form onSubmit={submit}>
+    <div>
       <h3 className="type-eyebrow text-flame">{t("library.add")}</h3>
 
-      <div className="mt-4 space-y-4">
+      <form onSubmit={look} className="mt-4">
         <Field
           label={t("library.search")}
-          value={form.target}
-          onChange={(v) => set("target", v)}
-          placeholder="Dexter Gordon Cheese Cake Go 1962"
+          value={target}
+          onChange={setTarget}
+          placeholder="https://www.youtube.com/watch?v=…"
           required
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="mt-4">
           <Field
-            label="Artist — the answer"
-            value={form.artist}
-            onChange={(v) => set("artist", v)}
-            required
+            label={t("library.discogsLink")}
+            value={discogs}
+            onChange={setDiscogs}
+            placeholder="https://www.discogs.com/release/… (optional)"
           />
-          <Field label="Song" value={form.song} onChange={(v) => set("song", v)} required />
-          <Field
-            label="Soloist — shown on reveal"
-            value={form.soloist}
-            onChange={(v) => set("soloist", v)}
-          />
-          <Field
-            label={t("library.soloAt")}
-            value={form.solo}
-            onChange={(v) => set("solo", v)}
-            placeholder="0:52"
-            required
-          />
-          <Field label="Album" value={form.album} onChange={(v) => set("album", v)} />
-          <Field label="Year" value={form.year} onChange={(v) => set("year", v)} />
-          <Field label="Label" value={form.label} onChange={(v) => set("label", v)} />
+          <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+            {t("library.discogsHelp")}
+          </p>
         </div>
 
-        <Field label="Note shown on reveal" value={form.note} onChange={(v) => set("note", v)} />
-      </div>
+        <button
+          type="submit"
+          disabled={busy !== null || !target.trim()}
+          className="type-eyebrow mt-5 w-full border border-paper-faint px-5 py-4 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+        >
+          {busy === "looking" ? t("library.lookingUp") : t("library.lookUp")}
+        </button>
+      </form>
 
-      <button
-        type="submit"
-        disabled={busy}
-        className="type-eyebrow mt-6 w-full bg-flame px-5 py-4 text-ink transition-colors hover:bg-paper disabled:opacity-40"
-      >
-        {busy ? t("library.importing") : t("library.add")}
-      </button>
+      {error && <p className="type-body mt-4 text-sm text-flame">{error}</p>}
 
-      {busy && (
-        <p className="type-body mt-3 text-xs text-paper-faint">
-          Downloading the source and cutting a 40 second window. This usually takes under a minute.
-        </p>
+      {draft && (
+        <section className="mt-10 border-t border-ink-edge pt-8">
+          <h4 className="type-eyebrow text-flame">{t("library.found")}</h4>
+
+          <p className="type-data mt-2 text-xs text-paper-faint">
+            {draft.sourceTitle} · {Math.floor(draft.sourceDuration / 60)}:
+            {String(Math.floor(draft.sourceDuration % 60)).padStart(2, "0")}
+          </p>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <Field label="Artist" value={draft.artist} onChange={(v) => field("artist", v)} required />
+            <Field label="Song" value={draft.song} onChange={(v) => field("song", v)} required />
+            <Field label="Album" value={draft.album} onChange={(v) => field("album", v)} />
+            <Field
+              label="Year"
+              value={draft.year ? String(draft.year) : ""}
+              onChange={(v) => field("year", Number(v) || 0)}
+            />
+          </div>
+
+          <div className="mt-4">
+            <Field label="Note shown on reveal" value={note} onChange={setNote} />
+          </div>
+
+          <div className="mt-6">
+            <span className="type-eyebrow text-paper-faint">
+              {t("library.personnelCount", { n: draft.personnel.length })}
+            </span>
+            {draft.personnel.length > 0 ? (
+              <ul className="mt-3 space-y-1">
+                {draft.personnel.map((credit) => (
+                  <li key={credit.name} className="flex flex-wrap gap-x-3 text-sm">
+                    <span className="type-body text-paper">{credit.name}</span>
+                    <span className="type-body text-paper-faint">{credit.role}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="type-body mt-2 text-sm text-paper-faint">
+                {t("library.noPersonnel")}
+              </p>
+            )}
+          </div>
+
+          {draft.notes.length > 0 && (
+            <ul className="mt-6 space-y-2 border-l-2 border-ink-edge pl-4">
+              {draft.notes.map((line) => (
+                <li key={line} className="type-body text-xs leading-relaxed text-paper-faint">
+                  {line}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <button
+            type="button"
+            onClick={add}
+            disabled={busy !== null || !draft.artist.trim() || !draft.song.trim()}
+            className="type-eyebrow mt-8 w-full bg-flame px-5 py-4 text-ink transition-colors hover:bg-paper disabled:opacity-40"
+          >
+            {busy === "adding" ? t("library.importing") : t("library.add")}
+          </button>
+
+          {busy === "adding" && (
+            <p className="type-body mt-3 text-xs text-paper-faint">{t("library.importingHelp")}</p>
+          )}
+        </section>
       )}
-      {error && <p className="type-body mt-3 text-sm text-flame">{error}</p>}
-    </form>
+    </div>
   );
 }
 

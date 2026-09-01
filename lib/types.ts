@@ -7,6 +7,12 @@
    casing anywhere downstream.
    ------------------------------------------------------------------ */
 
+export interface Credit {
+  name: string;
+  /** Instruments, comma separated. Empty when the credit names no role. */
+  role: string;
+}
+
 export interface Solo {
   /** Stable slug, also the audio filename stem. */
   id: string;
@@ -18,16 +24,18 @@ export interface Solo {
   /** Answer two. */
   song: string;
 
-  /**
-   * Who takes the solo on this take. Shown when the round closes; never the
-   * thing being guessed. On a Bill Evans Trio date the answer is Bill Evans
-   * even when the famous passage is Scott LaFaro's.
-   */
-  soloist: string;
-
   album: string;
   year: number;
-  label: string;
+
+  /**
+   * Everyone playing on the date, from Discogs. Shown when the round closes,
+   * never before — half the pleasure of a jazz record is finding out who was
+   * in the room.
+   */
+  personnel: Credit[];
+
+  /** The Discogs release the credits came from, so they can be re-checked. */
+  discogsReleaseId?: number;
 
   /** Source. Retained so a clip can always be recut from scratch. */
   youtubeId: string;
@@ -47,6 +55,12 @@ export interface Solo {
   leadIn: number;
   /** Length of the clip file in seconds. */
   clipDuration: number;
+
+  /**
+   * Length of the whole recording. The clip is a window onto it, and this is
+   * what lets the library screen move that window somewhere else.
+   */
+  sourceDuration?: number;
 
   /**
    * False until a human has confirmed soloStart against the waveform.

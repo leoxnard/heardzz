@@ -17,14 +17,26 @@ export function resolveSource(target: string): Promise<{
   title: string;
   duration: number;
   uploader: string;
+  /** Only present on YouTube Music and "Topic" uploads; "" otherwise. */
+  artist: string;
+  track: string;
+  album: string;
+  year: number;
 }>;
 
 export const SILENT_DBFS: number;
 
-export function levelAtMarker(file: string, marker: number): Promise<number | null>;
+export function levelAtMarker(
+  file: string,
+  marker: number,
+  seconds?: number,
+): Promise<number | null>;
 
 /** Seconds until the music starts, for sources that open with dead air. */
 export function detectAudibleStart(file: string): Promise<number>;
+
+/** Sound at this point, and markedly less just before it. */
+export function looksLikeAnOnset(file: string, marker: number): Promise<boolean>;
 
 export function extractClip(options: {
   youtubeId: string;
@@ -38,6 +50,8 @@ export function extractClip(options: {
   soloStart: number;
   leadIn: number;
   clipDuration: number;
+  /** Length of the whole recording, not just the cut window. */
+  sourceDuration: number;
   /** Mean dBFS of the first two seconds the game would play, or null. */
   markerLevel: number | null;
 }>;

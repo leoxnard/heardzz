@@ -25,8 +25,13 @@ keep working on the title; the round is won when both are in. The shared result
 grid has two columns for the same reason — artist on the left, title on the
 right.
 
-Who actually takes the solo, and on what instrument, is shown when the round
-closes. It is trivia, never the question.
+There is one button, not two. Guessing and skipping both spend an attempt and
+both unlock the next rung, so the control follows the fields: with something in
+them it checks, with nothing in them it skips. Two buttons meant typing an
+answer and then throwing it away by pressing the wrong one.
+
+The album, the year and everybody who played on the date appear when the round
+closes.
 
 ## The ladder
 
@@ -54,8 +59,8 @@ Overrides are per-device; **Reset to defaults** discards them.
 | Key | Does |
 | --- | --- |
 | `Space` | Play the snippet, or stop it. Ignored while typing in a field. |
-| `Enter` | Submit the guess. Works from inside a field. |
-| `Shift`+`Enter` | Skip. Works from inside a field. |
+| `Enter` | Check the guess, or skip when both fields are empty. Works from inside a field. |
+| `Shift`+`Enter` | Skip regardless of what is typed. |
 | `Enter` on the result | Start the next one, in Practice. |
 | `Escape` | Close a panel, or dismiss the suggestion list. |
 
@@ -97,17 +102,39 @@ records the solo time first.
 YouTube is the source of the file, not the player. A clip is downloaded and cut
 once; the game never touches the network while you play.
 
-From the terminal:
+In **Library** (`/admin`) there is one field. Paste a YouTube link, press
+**Look it up**, and the artist, tune, album, year and the whole band on the
+date come back filled in:
+
+1. `yt-dlp` reads the upload. Music uploads carry proper tags; hand-uploaded
+   videos do not, so the title is parsed — "Artist - Title" covers nearly all
+   of them, and the channel name stands in when there is no separator.
+2. Discogs is asked for the record, searching by tune rather than by album so a
+   bare song title finds the album it came out on. Compilations are skipped
+   where a single-session release exists, because a compilation's credits are
+   everyone who ever played on it.
+3. Everything found stays editable before you commit it.
+
+When the automatic match picks the wrong pressing, paste a **Discogs release or
+master link** and that release is used instead.
+
+If the parse struggles with a title, set `GEMINI_API_KEY` and a model reads it
+instead. Entirely optional — nothing else needs a key, and the parser runs
+first either way. `GEMINI_MODEL` overrides the default of `gemini-2.5-flash`.
+
+From the terminal, for the same thing without the form:
 
 ```bash
-npm run add-track -- --search "Dexter Gordon Cheese Cake Go 1962" --artist "Dexter Gordon" --song "Cheese Cake" --soloist "Dexter Gordon" --instrument "tenor saxophone" --album "Go" --year 1962 --label "Blue Note" --solo 0:52
+npm run add-track -- --search "Dexter Gordon Cheese Cake Go 1962" --artist "Dexter Gordon" --song "Cheese Cake" --album "Go!" --year 1962
 ```
 
 `--url` takes an exact video instead of a search. `npm run add-track -- --help`
-lists every flag.
+lists every flag. To fill in credits for records already in the library:
 
-Or from **Library** (`/admin`), which does the same thing through a form and is
-also where start points get confirmed.
+```bash
+npm run personnel            # only the ones with none
+npm run personnel -- --force # all of them, again
+```
 
 To rebuild the whole starting library from scratch:
 
@@ -117,18 +144,22 @@ npm run seed
 
 ### Confirming a start point
 
-Each clip carries eight seconds of audio ahead of its start point. That headroom
-is why the marker can be dragged earlier or later without going back to the
-network — the screen shows the same instant both as a position in the clip and
-as a position in the source recording, and moving one moves the other. Preview
-at 0.5s, 2s or 6s to hear exactly what a round will play, then **Confirm**.
+Two controls at two scales. The **waveform** covers the forty seconds that were
+cut, with eight seconds of headroom ahead of the start point — that is why the
+marker can be dragged earlier or later without going back to the network. It
+shows the same instant both as a position in the clip and as a position in the
+recording, and moving one moves the other. Preview at 0.5s, 2s or 6s to hear
+exactly what a round will play, then **Confirm**.
 
-If the moment you want is not inside the clip at all, the embedded source player
-below finds it, and **Re-cut from a new time** downloads it again around that
-point.
+Underneath, **the whole recording** is a bar end to end, with the cut window
+marked on it. Drag anywhere to pick a different part of the record and press
+**Re-cut here**; that one downloads the source again. Coarse on purpose —
+landing near the right minute is its job, and the waveform does the seconds.
 
-One kind of wrong start point is caught without you: if the marker sits in
-silence, the import warns and the Library screen says so in red.
+Two kinds of wrong start point are caught without you. A marker sitting in
+silence is flagged in red. And a marker with no step up into it — sound before
+as well as after, meaning the cut landed inside the music rather than at the
+head of it — leaves the entry unconfirmed.
 
 Set **Only play tracks with a confirmed start** in Settings to keep unconfirmed
 ones out of play while you work through them.
@@ -154,7 +185,7 @@ lib/
   daily.ts      date to record, the practice order, repeat spacing
   lexicon/      ~280 artists and ~510 titles, plus matching
   i18n/         all interface copy
-scripts/        extraction pipeline, CLI, seed list, retime
+scripts/        extraction, Discogs, title parsing, CLI, seed, retime
 data/solos.json the library; written by the CLI and the Library screen
 public/audio/   the clips (git-ignored)
 ```
