@@ -3,6 +3,7 @@ import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { readLibrary, writeLibrary } from "@/scripts/extract.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
+import { AUDIO_DIR } from "@/lib/paths";
 import { resolveSoloist } from "@/lib/soloist";
 import type { Solo } from "@/lib/types";
 
@@ -74,10 +75,15 @@ export async function DELETE(request: Request) {
 
   await writeLibrary({ ...library, solos: solos.filter((solo) => solo.id !== id) });
 
-  // Another entry may point at the same clip; only remove an orphan.
-  const stillUsed = solos.some((solo) => solo.id !== id && solo.audio === target.audio);
-  if (!stillUsed) {
-    await unlink(path.join(process.cwd(), "public", target.audio)).catch(() => {});
+  // Another entry may point at the same clip — a record with three soloists
+  // shares one head clip — so only an orphan is removed. Clips live in the
+  // data directory, and `audio` is the URL they are served under, so the file
+  // has to be read back off the path rather than joined onto it.
+  const kept = solos.filter((solo) => solo.id !== id);
+  for (const audio of [target.audio, target.soloClip?.audio]) {
+    if (!audio) continue;
+    if (kept.some((solo) => solo.audio === audio || solo.soloClip?.audio === audio)) continue;
+    await unlink(path.join(AUDIO_DIR, path.basename(audio))).catch(() => {});
   }
 
   return NextResponse.json({ ok: true });

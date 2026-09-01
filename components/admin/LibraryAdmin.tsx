@@ -3,11 +3,38 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ImportForm } from "./ImportForm";
 import { SoloEditor } from "./SoloEditor";
+import { SourceWorkbench } from "./SourceWorkbench";
 import { SuggestionReview } from "./SuggestionReview";
 import { t } from "@/lib/i18n";
 import type { Solo, Suggestion } from "@/lib/types";
+
+/* ------------------------------------------------------------------
+   The library screen.
+
+   Everything that puts a record in the library now goes through one place:
+   the marking screen. A pasted link, a playlist worked through track by
+   track, a suggestion somebody sent in, or a record already here that wants
+   its positions redone — all of them open the same tool, prefilled with
+   whatever is already known.
+   ------------------------------------------------------------------ */
+
+interface PlaylistEntry {
+  youtubeId: string;
+  title: string;
+  duration: number;
+  uploader: string;
+}
+
+type Job =
+  /** A link, pasted by hand. */
+  | { kind: "single" }
+  /** A playlist, one record at a time. */
+  | { kind: "queue"; entries: PlaylistEntry[]; index: number }
+  /** Somebody's suggestion, marked up before it is accepted. */
+  | { kind: "suggestion"; suggestion: Suggestion }
+  /** A record already in the library, being marked again. */
+  | { kind: "remark"; solos: Solo[] };
 
 export function LibraryAdmin({
   initial,
@@ -28,7 +55,11 @@ export function LibraryAdmin({
     initial.some((solo) => !solo.verified) ? "unverified" : "all",
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(initial.length === 0);
+  const [job, setJob] = useState<Job | null>(initial.length === 0 ? { kind: "single" } : null);
+
+  const [playlistTarget, setPlaylistTarget] = useState("");
+  const [playlistBusy, setPlaylistBusy] = useState(false);
+  const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   const unverified = solos.filter((solo) => !solo.verified).length;
   const waiting = suggestions.filter((s) => s.status === "pending").length;
@@ -76,6 +107,181 @@ export function LibraryAdmin({
       next[index] = updated;
       return next;
     });
+  }
+
+  function absorb(written: Solo[], removed: string[]) {
+    setSolos((current) => {
+      const dropped = new Set([...removed, ...written.map((solo) => solo.id)]);
+      return [...current.filter((solo) => !dropped.has(solo.id)), ...written];
+    });
+  }
+
+  async function loadPlaylist() {
+    setPlaylistBusy(true);
+    setPlaylistError(null);
+    try {
+      const response = await fetch("/api/admin/playlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: playlistTarget.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not read that playlist");
+      setJob({ kind: "queue", entries: data.entries as PlaylistEntry[], index: 0 });
+      setPlaylistTarget("");
+    } catch (cause) {
+      setPlaylistError(cause instanceof Error ? cause.message : "Could not read that playlist");
+    } finally {
+      setPlaylistBusy(false);
+    }
+  }
+
+  /** Next in the queue, or done. Skipping and saving both land here. */
+  function advanceQueue() {
+    setJob((current) => {
+      if (current?.kind !== "queue") return null;
+      const index = current.index + 1;
+      return index < current.entries.length ? { ...current, index } : null;
+    });
+  }
+
+  function workbench() {
+    if (!job) return null;
+
+    if (job.kind === "queue") {
+      const entry = job.entries[job.index];
+      const remaining = job.entries.length - job.index - 1;
+      return (
+        <div>
+          <div className="mb-6 flex flex-wrap items-baseline gap-x-4 border-b border-ink-edge pb-4">
+            <h3 className="type-eyebrow text-flame">{t("mark.queueTitle")}</h3>
+            <span className="type-data text-xs text-paper-faint">{entry.title}</span>
+            <button
+              type="button"
+              onClick={advanceQueue}
+              className="type-eyebrow ml-auto text-paper-faint transition-colors hover:text-flame"
+            >
+              {t("mark.skip")}
+            </button>
+          </div>
+          <SourceWorkbench
+            key={entry.youtubeId}
+            seed={{ youtubeId: entry.youtubeId, autoFetch: true }}
+            queueNote={t("mark.queue", { n: remaining })}
+            saveLabel={remaining > 0 ? t("mark.saveAndNext") : t("mark.save")}
+            onSaved={(written, removed) => {
+              absorb(written, removed);
+              advanceQueue();
+            }}
+            onCancel={advanceQueue}
+          />
+        </div>
+      );
+    }
+
+    if (job.kind === "suggestion") {
+      const suggestion = job.suggestion;
+      return (
+        <SourceWorkbench
+          key={suggestion.id}
+          seed={{
+            youtubeId: suggestion.youtubeId,
+            artist: suggestion.artist,
+            song: suggestion.song,
+            album: suggestion.album,
+            year: suggestion.year,
+            note: suggestion.note,
+            personnel: suggestion.personnel,
+            discogsReleaseId: suggestion.discogsReleaseId,
+            autoFetch: true,
+          }}
+          onSaved={async (written, removed) => {
+            absorb(written, removed);
+            // The clips exist already; this only settles the suggestion.
+            const response = await fetch("/api/admin/suggestions", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: suggestion.id, action: "approve", alreadyCut: true }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+              setSuggestions((current) =>
+                current.map((s) => (s.id === suggestion.id ? (data.suggestion as Suggestion) : s)),
+              );
+            }
+            setJob(null);
+            setSelectedId(written[0]?.id ?? null);
+            setTab("library");
+          }}
+          onCancel={() => setJob(null)}
+        />
+      );
+    }
+
+    if (job.kind === "remark") {
+      const [first] = job.solos;
+      return (
+        <SourceWorkbench
+          key={first.id}
+          existing={job.solos}
+          seed={{
+            youtubeId: first.youtubeId,
+            artist: first.artist,
+            song: first.song,
+            album: first.album,
+            year: first.year,
+            note: first.note,
+            personnel: first.personnel,
+            discogsReleaseId: first.discogsReleaseId,
+            autoFetch: true,
+          }}
+          onSaved={(written, removed) => {
+            absorb(written, removed);
+            setSelectedId(written[0]?.id ?? null);
+            setJob(null);
+          }}
+          onCancel={() => setJob(null)}
+        />
+      );
+    }
+
+    return (
+      <div>
+        <SourceWorkbench
+          onSaved={(written, removed) => {
+            absorb(written, removed);
+            setSelectedId(written[0]?.id ?? null);
+            setJob(null);
+          }}
+          onCancel={solos.length > 0 ? () => setJob(null) : undefined}
+        />
+
+        <div className="mt-12 max-w-2xl border-t border-ink-edge pt-8">
+          <h3 className="type-eyebrow text-flame">{t("mark.queueTitle")}</h3>
+          <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+            {t("mark.queueHelp")}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <input
+              type="text"
+              value={playlistTarget}
+              onChange={(event) => setPlaylistTarget(event.target.value)}
+              placeholder="https://www.youtube.com/playlist?list=…"
+              className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-4 py-3 text-sm text-paper focus:border-flame focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={loadPlaylist}
+              disabled={playlistBusy || !playlistTarget.trim()}
+              className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+            >
+              {playlistBusy ? t("mark.playlistLoading") : t("mark.playlistLoad")}
+            </button>
+          </div>
+          {playlistError && <p className="type-body mt-3 text-sm text-flame">{playlistError}</p>}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -126,17 +332,17 @@ export function LibraryAdmin({
         </div>
       </header>
 
-      {tab === "suggestions" ? (
+      {tab === "suggestions" && !job ? (
         <main className="flex-1 p-6 sm:p-10">
           <div className="mx-auto w-full max-w-3xl">
             <SuggestionReview
               suggestions={suggestions}
-              onResolved={(suggestion, solo) => {
+              onMark={(suggestion) => setJob({ kind: "suggestion", suggestion })}
+              onResolved={(suggestion) =>
                 setSuggestions((current) =>
                   current.map((s) => (s.id === suggestion.id ? suggestion : s)),
-                );
-                if (solo) replace(solo);
-              }}
+                )
+              }
             />
           </div>
         </main>
@@ -162,12 +368,12 @@ export function LibraryAdmin({
             <button
               type="button"
               onClick={() => {
-                setAdding(true);
+                setJob({ kind: "single" });
                 setSelectedId(null);
               }}
               className="type-eyebrow ml-auto border border-ink-edge px-3 py-2 text-paper-dim transition-colors hover:border-flame hover:text-flame"
             >
-              +
+              + {t("mark.add")}
             </button>
           </div>
 
@@ -178,14 +384,14 @@ export function LibraryAdmin({
               </li>
             )}
             {visible.map((solo) => {
-              const active = selected?.id === solo.id && !adding;
+              const active = selected?.id === solo.id && !job;
               return (
                 <li key={solo.id}>
                   <button
                     type="button"
                     onClick={() => {
                       setSelectedId(solo.id);
-                      setAdding(false);
+                      setJob(null);
                     }}
                     className={`flex w-full items-start gap-3 border-b border-ink-edge px-4 py-3 text-left transition-colors ${
                       active ? "bg-ink-raised" : "hover:bg-ink-raised"
@@ -203,6 +409,7 @@ export function LibraryAdmin({
                       </span>
                       <span className="type-body block truncate text-xs text-paper-dim">
                         {solo.song}
+                        {solo.soloist && solo.soloist !== solo.artist && ` · ${solo.soloist}`}
                       </span>
                       <span className="type-data mt-1 block text-[0.6rem] text-paper-faint">
                         {solo.catalog}
@@ -216,7 +423,7 @@ export function LibraryAdmin({
         </aside>
 
         <main className="p-6 sm:p-10">
-          {missing > 0 && (
+          {missing > 0 && !job && (
             <div className="mb-8 border border-flame p-5">
               <p className="type-body text-sm text-paper">
                 {t("library.missingAudio", { n: missing })}
@@ -233,27 +440,23 @@ export function LibraryAdmin({
             </div>
           )}
 
-          {adding || !selected ? (
-            <>
-              <p className="type-body mb-8 max-w-2xl text-sm text-paper-dim">{t("library.intro")}</p>
-              <ImportForm
-                onImported={(solo) => {
-                  replace(solo);
-                  setSelectedId(solo.id);
-                  setAdding(false);
-                }}
-              />
-            </>
-          ) : (
+          {job ? (
+            workbench()
+          ) : selected ? (
             <SoloEditor
               key={selected.id}
               solo={selected}
+              // Everything cut from the same recording is marked together.
+              siblings={solos.filter((solo) => solo.youtubeId === selected.youtubeId)}
+              onRemark={(group) => setJob({ kind: "remark", solos: group })}
               onSaved={replace}
               onDeleted={(id) => {
                 setSolos((current) => current.filter((solo) => solo.id !== id));
                 setSelectedId(null);
               }}
             />
+          ) : (
+            <p className="type-body max-w-2xl text-sm text-paper-dim">{t("library.intro")}</p>
           )}
         </main>
       </div>

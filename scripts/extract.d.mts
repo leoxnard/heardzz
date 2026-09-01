@@ -6,6 +6,7 @@ export const POST_ROLL: number;
 export const CLIP_LENGTH: number;
 export const DATA_DIR: string;
 export const AUDIO_DIR: string;
+export const SOURCE_DIR: string;
 export const SUGGESTIONS_PATH: string;
 export const LIBRARY_PATH: string;
 
@@ -40,13 +41,7 @@ export function detectAudibleStart(file: string): Promise<number>;
 /** Sound at this point, and markedly less just before it. */
 export function looksLikeAnOnset(file: string, marker: number): Promise<boolean>;
 
-export function extractClip(options: {
-  youtubeId: string;
-  /** Seconds into the source, or "opening" to cut from the first audible moment. */
-  soloStart: number | "opening";
-  outputId: string;
-  onProgress?: (message: string) => void;
-}): Promise<{
+export interface CutClip {
   audio: string;
   /** The start actually used, with "opening" resolved to seconds. */
   soloStart: number;
@@ -56,7 +51,48 @@ export function extractClip(options: {
   sourceDuration: number;
   /** Mean dBFS of the first two seconds the game would play, or null. */
   markerLevel: number | null;
+}
+
+export function extractClip(options: {
+  youtubeId: string;
+  /** Seconds into the source, or "opening" to cut from the first audible moment. */
+  soloStart: number | "opening";
+  outputId: string;
+  onProgress?: (message: string) => void;
+  /** Keep the downloaded recording on disk instead of dropping it. */
+  keepSource?: boolean;
+}): Promise<CutClip>;
+
+/** The URL the browser uses for a held recording. */
+export function sourcePreviewUrl(youtubeId: string): string;
+
+export function sourceIsReady(youtubeId: string): boolean;
+
+/** Put a whole recording on disk, ready to be marked up. Idempotent. */
+export function fetchSource(options: {
+  youtubeId: string;
+  onProgress?: (message: string) => void;
+}): Promise<{
+  youtubeId: string;
+  previewUrl: string;
+  duration: number;
+  /** Where the music starts, so the opening marker is placed for you. */
+  audibleStart: number;
 }>;
+
+/** Cut one clip out of a recording already on disk. No network. */
+export function cutFromSource(options: {
+  youtubeId: string;
+  start: number | "opening";
+  outputId: string;
+  onProgress?: (message: string) => void;
+}): Promise<CutClip>;
+
+export function dropSource(youtubeId: string): Promise<void>;
+
+export function listSources(): Promise<
+  { youtubeId: string; bytes: number; fetchedAt: number }[]
+>;
 
 export function readLibrary(): Promise<{ version: number; solos: unknown[] }>;
 export function writeLibrary(library: { version: number; solos: unknown[] }): Promise<void>;

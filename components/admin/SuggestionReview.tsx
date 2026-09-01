@@ -7,9 +7,10 @@ import type { Solo, Suggestion } from "@/lib/types";
 /* ------------------------------------------------------------------
    Reviewing what people have put forward.
 
-   Confirming is the moment the server does any work: it downloads the
-   source, cuts the opening and adds the record. Everything up to here has
-   cost a few hundred bytes on disk.
+   Accepting one opens it on the marking screen rather than adding it blind:
+   the recording is fetched, the tune and its solos are marked there, and the
+   suggestion is settled once the clips exist. Nothing is downloaded for a
+   suggestion nobody has looked at.
    ------------------------------------------------------------------ */
 
 function when(iso: string): string {
@@ -24,17 +25,19 @@ function when(iso: string): string {
 
 interface SuggestionReviewProps {
   suggestions: Suggestion[];
+  /** Open the marking screen on this suggestion. Where accepting starts now. */
+  onMark: (suggestion: Suggestion) => void;
   onResolved: (suggestion: Suggestion, solo?: Solo) => void;
 }
 
-export function SuggestionReview({ suggestions, onResolved }: SuggestionReviewProps) {
+export function SuggestionReview({ suggestions, onMark, onResolved }: SuggestionReviewProps) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const pending = suggestions.filter((s) => s.status === "pending");
   const settled = suggestions.filter((s) => s.status !== "pending").slice(-10).reverse();
 
-  async function act(suggestion: Suggestion, action: "approve" | "reject") {
+  async function act(suggestion: Suggestion, action: "reject") {
     setBusyId(suggestion.id);
     setError(null);
     try {
@@ -103,11 +106,11 @@ export function SuggestionReview({ suggestions, onResolved }: SuggestionReviewPr
             <div className="mt-6 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => act(suggestion, "approve")}
+                onClick={() => onMark(suggestion)}
                 disabled={busyId !== null}
                 className="type-eyebrow bg-flame px-5 py-3 text-ink transition-colors hover:bg-paper disabled:opacity-40"
               >
-                {busyId === suggestion.id ? t("review.approving") : t("review.approve")}
+                {t("review.approve")}
               </button>
               <a
                 href={`https://www.youtube.com/watch?v=${suggestion.youtubeId}`}

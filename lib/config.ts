@@ -131,7 +131,7 @@ export const DEFAULT_CONFIG: GameConfig = {
 export const LADDER_PRESETS: { id: string; label: string; ladderMs: number[] }[] = [
   { id: "connoisseur", label: "Opens at 0.5s", ladderMs: [500, 2000, 5000, 10000, 20000] },
   { id: "standard", label: "Opens at 1s", ladderMs: [1000, 2000, 4000, 7000, 11000, 16000] },
-  { id: "easy", label: "Opens at 3s", ladderMs: [3000, 6000, 10000, 15000, 22000, 30000] },
+  { id: "easy", label: "Opens at 3s", ladderMs: [3000, 6000, 9000, 13000, 16000, 20000] },
 ];
 
 export const CONFIG_STORAGE_KEY = "heardzz:config:v1";
@@ -144,10 +144,12 @@ export const STATS_STORAGE_KEY = "heardzz:stats:v1";
 export const DAILY_STORAGE_KEY = "heardzz:daily:v2";
 
 /**
- * Clip length the extractor cuts, in seconds. Bounds the largest usable
- * ladder rung, and has to stay in step with CLIP_LENGTH in scripts/extract.mjs.
+ * How much of a clip a round can play, in seconds. Bounds the largest usable
+ * ladder rung, and has to stay in step with POST_ROLL in scripts/extract.mjs
+ * — the file also carries a couple of seconds ahead of the marker, which is
+ * headroom for moving the entry point rather than anything the game plays.
  */
-export const CLIP_SECONDS = 40;
+export const CLIP_SECONDS = 20;
 
 export function clampConfig(input: Partial<GameConfig>): GameConfig {
   const merged = { ...DEFAULT_CONFIG, ...input };

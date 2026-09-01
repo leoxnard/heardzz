@@ -116,7 +116,7 @@ export const en = {
   library: {
     title: "Library",
     intro:
-      "Confirm where each round starts. Drag the marker or type a time, then play it back.",
+      "Pick a record on the left, or add one. Adding fetches the whole recording once, you mark the tune and its solos on it, and the clips are cut when you are done.",
     unverified: "{n} unverified",
     allVerified: "Every timestamp confirmed.",
     filterAll: "All",
@@ -137,6 +137,9 @@ export const en = {
       "Discogs credited nobody on this release. Add a Discogs link to a pressing that lists the band.",
     importingHelp: "Downloading the source and cutting a 40 second window from the opening.",
     soloAt: "Round starts at",
+    headClip: "The opening cut",
+    soloClip: "The solo cut",
+    spaceHint: "Space plays six seconds.",
     inClip: "In this clip",
     inSource: "In the source recording",
     preview: "Preview from here",
@@ -170,6 +173,43 @@ export const en = {
     importFailed: "Import failed",
     silentWarning:
       "There is no sound here. The marker is in a gap — move it, or re-cut from a time where the music actually starts.",
+  },
+
+  /* The screen where a record is marked up. */
+  mark: {
+    add: "Add a record",
+    addHelp:
+      "Paste a link and the whole recording is fetched once. You then mark it end to end — the top of the tune, and every solo worth asking about — and only then is anything cut. Nothing is downloaded twice.",
+    fetch: "Fetch the recording",
+    fetching: "Fetching",
+    fetchingHelp:
+      "Downloading the tune and reading where the music starts. This is the only download.",
+    cancel: "Never mind",
+    start: "Top of the tune",
+    startHelp:
+      "Placed for you at the first sound. Move it only if the upload opens with applause or talk.",
+    unnamed: "Unnamed solo",
+    soloist: "Who is playing",
+    note: "Note shown on reveal",
+    addSolo: "+ Add a solo at the playhead",
+    preview: "Play from the marker",
+    keys: "Space plays six seconds from the selected marker. ← → nudge it a tenth, with shift a second. Drag the lit box on the lower row to move the window.",
+    details: "Album, year and the band — {n} credited",
+    save: "Cut and save",
+    saveAndNext: "Save and take the next one",
+    saving: "Cutting the clips",
+    saveHelp: "Cuts the opening plus {n} solo clips, then throws the recording away.",
+    discard: "Discard the recording",
+    remark: "Mark it again",
+    remarkHelp:
+      "Fetches the recording once more and opens it with the positions you already have.",
+    queue: "{n} still to mark",
+    queueTitle: "From the playlist",
+    queueHelp: "Marked one at a time. Skipping leaves a record out of the library entirely.",
+    skip: "Skip this one",
+    playlist: "Playlist link",
+    playlistLoad: "List the playlist",
+    playlistLoading: "Reading the playlist",
   },
 
   login: {
@@ -217,7 +257,7 @@ export const en = {
     pending: "{n} waiting",
     none: "Nothing waiting.",
     submitted: "Suggested {when}",
-    approve: "Confirm and add",
+    approve: "Mark it up",
     approving: "Downloading and cutting",
     reject: "Turn down",
     rejected: "Turned down",

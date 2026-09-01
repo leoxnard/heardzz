@@ -26,6 +26,11 @@ export async function PATCH(request: Request) {
   const body = (await request.json()) as {
     id?: string;
     action?: "approve" | "reject";
+    /**
+     * The clips already exist — the reviewer marked the record up by hand
+     * rather than taking the opening on trust. Nothing is downloaded.
+     */
+    alreadyCut?: boolean;
     reason?: string;
     /** Corrections the reviewer made before confirming. */
     solo?: Partial<Solo>;
@@ -44,6 +49,11 @@ export async function PATCH(request: Request) {
       status: "rejected",
       reason: body.reason?.slice(0, 400),
     });
+    return NextResponse.json({ suggestion: updated });
+  }
+
+  if (body.alreadyCut) {
+    const updated = await updateSuggestion(body.id, { status: "approved" });
     return NextResponse.json({ suggestion: updated });
   }
 

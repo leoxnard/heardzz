@@ -12,15 +12,15 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, rm, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, readFile, readdir, stat, writeFile, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 const run = promisify(execFile);
 
-export const PRE_ROLL = 8;
-export const POST_ROLL = 32;
+export const PRE_ROLL = 2;
+export const POST_ROLL = 20;
 export const CLIP_LENGTH = PRE_ROLL + POST_ROLL;
 
 /**
@@ -32,6 +32,16 @@ export const DATA_DIR = process.env.HEARDZZ_DATA_DIR
   : path.join(process.cwd(), "data");
 
 export const AUDIO_DIR = path.join(DATA_DIR, "audio");
+
+/**
+ * Whole recordings, held only while somebody is marking them up.
+ *
+ * Marking a solo means looking at the tune end to end, so the source is
+ * fetched once, kept on disk for the length of the session, and thrown away
+ * the moment the clips have been cut from it. Nothing here is permanent:
+ * anything left behind is an abandoned session, not data.
+ */
+export const SOURCE_DIR = path.join(DATA_DIR, "sources");
 export const LIBRARY_PATH = path.join(DATA_DIR, "solos.json");
 export const SUGGESTIONS_PATH = path.join(DATA_DIR, "suggestions.json");
 
@@ -125,10 +135,6 @@ export async function resolveSource(target) {
 }
 
 /**
- * Download, cut and normalise. Returns the numbers the library entry needs.
- */
-
-/**
  * YouTube's throttling changes often, and yt-dlp answers it by rotating which
  * client it impersonates. The default is right almost always; the fallbacks
  * cover the window between a YouTube change and the next yt-dlp release.
@@ -173,78 +179,180 @@ async function download(youtubeId, work) {
   );
 }
 
-export async function extractClip({ youtubeId, soloStart, outputId, onProgress }) {
+/* ------------------------------------------------------------------
+   Whole recordings, while they are being marked up.
+
+   The old pipeline downloaded a recording, cut one window out of it and threw
+   the rest away — so finding a second solo meant downloading the same eight
+   minutes again. Now the recording is fetched once and kept: everything is
+   marked against the whole tune, the clips are cut at the end, and the source
+   is dropped in the same breath.
+
+   Two files per source. The wav is what the clips are cut from, because
+   cutting from a re-encode and then encoding again is two generations of loss
+   for no reason. The mp3 is the one the browser downloads to draw and play.
+   ------------------------------------------------------------------ */
+
+const sourceMaster = (youtubeId) => path.join(SOURCE_DIR, `${youtubeId}.wav`);
+const sourcePreview = (youtubeId) => path.join(SOURCE_DIR, `${youtubeId}.mp3`);
+
+export function sourcePreviewUrl(youtubeId) {
+  return `/api/audio/source/${youtubeId}.mp3`;
+}
+
+async function probeDuration(file) {
+  const { stdout } = await run("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "default=noprint_wrappers=1:nokey=1",
+    file,
+  ]);
+  return Number(Number(stdout.trim()).toFixed(3)) || 0;
+}
+
+/** Is this recording already on disk, ready to be marked up? */
+export function sourceIsReady(youtubeId) {
+  return existsSync(sourceMaster(youtubeId)) && existsSync(sourcePreview(youtubeId));
+}
+
+/**
+ * Put a whole recording on disk and return what the marking screen needs:
+ * something to play, how long it runs, and where the music starts.
+ *
+ * Idempotent — asking twice for the same recording costs one ffprobe.
+ */
+export async function fetchSource({ youtubeId, onProgress }) {
   const log = onProgress ?? (() => {});
-  const work = await mkdtemp(path.join(tmpdir(), "heardzz-"));
+  await mkdir(SOURCE_DIR, { recursive: true });
 
-  try {
-    log("downloading source audio");
-    const source = path.join(work, "source.wav");
-    await download(youtubeId, work);
+  const master = sourceMaster(youtubeId);
+  const preview = sourcePreview(youtubeId);
 
-    if (!existsSync(source)) {
-      throw new Error("yt-dlp finished but produced no audio file");
+  if (!existsSync(master)) {
+    const work = await mkdtemp(path.join(tmpdir(), "heardzz-"));
+    try {
+      log("downloading the recording");
+      await download(youtubeId, work);
+      const fetched = path.join(work, "source.wav");
+      if (!existsSync(fetched)) {
+        throw new Error("yt-dlp finished but produced no audio file");
+      }
+      // Across a mount rename fails, so copy and drop the temp copy.
+      await copyFile(fetched, master);
+    } finally {
+      await rm(work, { recursive: true, force: true });
     }
+  }
 
-    // "opening" resolves against the audio we just fetched, so finding the
-    // downbeat costs no extra download.
-    const resolvedStart =
-      soloStart === "opening" ? await detectAudibleStart(source) : Number(soloStart);
+  if (!existsSync(preview)) {
+    log("preparing the preview");
+    // Mono at 96k: the browser only has to draw it and play it back, and a
+    // stereo master doubles the download for a waveform that looks the same.
+    await run("ffmpeg", [
+      "-y", "-hide_banner", "-loglevel", "error",
+      "-i", master,
+      "-ac", "1",
+      "-ar", "44100",
+      "-b:a", "96k",
+      "-map_metadata", "-1",
+      preview,
+    ], { maxBuffer: 1024 * 1024 * 16 });
+  }
 
-    // Clamp the pre-roll when the start sits near the top of the recording,
-    // and report back how much of it actually survived.
-    const leadIn = Math.min(PRE_ROLL, resolvedStart);
-    const cutStart = Math.max(0, resolvedStart - leadIn);
+  return {
+    youtubeId,
+    previewUrl: sourcePreviewUrl(youtubeId),
+    duration: await probeDuration(master),
+    // Precomputed so the marking screen opens with the downbeat already
+    // marked and the only positions left to place are the solos.
+    audibleStart: await detectAudibleStart(master),
+  };
+}
 
-    log("cutting and normalising");
-    await mkdir(AUDIO_DIR, { recursive: true });
-    const output = path.join(AUDIO_DIR, `${outputId}.mp3`);
+/** Throw a recording away. Called once its clips exist. */
+export async function dropSource(youtubeId) {
+  await Promise.all([
+    rm(sourceMaster(youtubeId), { force: true }),
+    rm(sourcePreview(youtubeId), { force: true }),
+  ]);
+}
 
-    await run(
-      "ffmpeg",
-      [
-        "-y",
-        "-hide_banner",
-        "-loglevel", "error",
-        "-ss", String(cutStart),
-        "-t", String(CLIP_LENGTH),
-        "-i", source,
-        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-        "-ac", "2",
-        "-ar", "44100",
-        "-b:a", "160k",
-        "-map_metadata", "-1",
-        output,
-      ],
-      { maxBuffer: 1024 * 1024 * 16 },
-    );
+/** Every recording currently held, oldest first. Abandoned sessions, mostly. */
+export async function listSources() {
+  if (!existsSync(SOURCE_DIR)) return [];
+  const names = await readdir(SOURCE_DIR);
+  const out = [];
+  for (const name of names) {
+    if (!name.endsWith(".wav")) continue;
+    const youtubeId = name.slice(0, -4);
+    const info = await stat(path.join(SOURCE_DIR, name)).catch(() => null);
+    if (info) out.push({ youtubeId, bytes: info.size, fetchedAt: info.mtimeMs });
+  }
+  return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
+}
 
-    const { stdout } = await run("ffprobe", [
-      "-v", "error",
-      "-show_entries", "format=duration",
-      "-of", "default=noprint_wrappers=1:nokey=1",
+/**
+ * Cut one clip out of a recording already on disk. No network.
+ *
+ * `start` is the instant the round should open on; the file carries `PRE_ROLL`
+ * seconds ahead of it so the entry point can still be nudged afterwards
+ * without going back to the source.
+ */
+export async function cutFromSource({ youtubeId, start, outputId, onProgress }) {
+  const log = onProgress ?? (() => {});
+  const master = sourceMaster(youtubeId);
+  if (!existsSync(master)) {
+    await fetchSource({ youtubeId, onProgress });
+  }
+
+  const resolvedStart = start === "opening" ? await detectAudibleStart(master) : Number(start);
+  const leadIn = Math.min(PRE_ROLL, resolvedStart);
+  const cutStart = Math.max(0, resolvedStart - leadIn);
+
+  log("cutting and normalising");
+  await mkdir(AUDIO_DIR, { recursive: true });
+  const output = path.join(AUDIO_DIR, `${outputId}.mp3`);
+
+  await run(
+    "ffmpeg",
+    [
+      "-y",
+      "-hide_banner",
+      "-loglevel", "error",
+      "-ss", String(cutStart),
+      "-t", String(CLIP_LENGTH),
+      "-i", master,
+      "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+      "-ac", "2",
+      "-ar", "44100",
+      "-b:a", "160k",
+      "-map_metadata", "-1",
       output,
-    ]);
+    ],
+    { maxBuffer: 1024 * 1024 * 16 },
+  );
 
-    const { stdout: sourceProbe } = await run("ffprobe", [
-      "-v", "error",
-      "-show_entries", "format=duration",
-      "-of", "default=noprint_wrappers=1:nokey=1",
-      source,
-    ]);
+  return {
+    audio: `/api/audio/${outputId}.mp3`,
+    soloStart: Number(resolvedStart.toFixed(3)),
+    leadIn: Number(leadIn.toFixed(3)),
+    clipDuration: await probeDuration(output),
+    sourceDuration: await probeDuration(master),
+    markerLevel: await levelAtMarker(output, leadIn),
+  };
+}
 
-    return {
-      audio: `/api/audio/${outputId}.mp3`,
-      soloStart: resolvedStart,
-      leadIn,
-      clipDuration: Number(Number(stdout.trim()).toFixed(3)),
-      // How long the whole recording runs, so the library screen can offer
-      // the rest of it rather than only the window that was cut.
-      sourceDuration: Number(Number(sourceProbe.trim()).toFixed(3)),
-      markerLevel: await levelAtMarker(output, leadIn),
-    };
+/**
+ * Fetch, cut, and drop the source again — the one-shot path the older import
+ * and re-cut routes still take. Pass `keepSource` when more clips are coming
+ * out of the same recording.
+ */
+export async function extractClip({ youtubeId, soloStart, outputId, onProgress, keepSource }) {
+  await fetchSource({ youtubeId, onProgress });
+  try {
+    return await cutFromSource({ youtubeId, start: soloStart, outputId, onProgress });
   } finally {
-    await rm(work, { recursive: true, force: true });
+    if (!keepSource) await dropSource(youtubeId);
   }
 }
 

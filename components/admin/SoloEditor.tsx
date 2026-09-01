@@ -1,13 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { SourceScrubber } from "./SourceScrubber";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Waveform } from "./Waveform";
 import { useSoloAudio } from "@/lib/audio";
 import { t } from "@/lib/i18n";
 import type { Solo } from "@/lib/types";
 
-const PREVIEW_LENGTHS = [0.5, 2, 6];
+/* ------------------------------------------------------------------
+   One entry, after it has been cut.
+
+   Everything structural — where the tune starts, where each solo is, who is
+   playing them — belongs to the marking screen, which works on the whole
+   recording. What is left here is the fine tuning that only needs the clip:
+   nudging the entry point inside it, fixing a name, confirming it.
+   ------------------------------------------------------------------ */
+
+/** What space plays, here and on the marking screen. */
+const PREVIEW = 6;
+const PREVIEW_LENGTHS = [0.5, 2, PREVIEW];
 
 /** Below this the marker is sitting in silence, not in a solo. */
 const SILENT_RMS = 0.004;
@@ -38,28 +48,34 @@ function timecode(seconds: number): string {
 
 interface SoloEditorProps {
   solo: Solo;
+  /** Every entry cut from the same recording, this one included. */
+  siblings: Solo[];
+  onRemark: (group: Solo[]) => void;
   onSaved: (solo: Solo) => void;
   onDeleted: (id: string) => void;
 }
 
-export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
+export function SoloEditor({ solo, siblings, onRemark, onSaved, onDeleted }: SoloEditorProps) {
   const [draft, setDraft] = useState<Solo>(solo);
-  const [busy, setBusy] = useState<null | "saving" | "recutting" | "solo-clip">(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recutAt, setRecutAt] = useState(Math.round(solo.soloStart));
   const [discogsLink, setDiscogsLink] = useState("");
   const [creditsBusy, setCreditsBusy] = useState(false);
   const [playedFrom, setPlayedFrom] = useState<number | null>(null);
   const [playedLength, setPlayedLength] = useState(0);
+  /** Which of the two cuts is on the waveform: the head, or the solo. */
+  const [side, setSide] = useState<"head" | "solo">(solo.soloClip ? "solo" : "head");
 
   // No reset effect here: LibraryAdmin keys this component on the solo id,
   // so selecting a different entry remounts it with fresh state.
 
-  const audio = useSoloAudio(draft.audio, 0.9);
+  const clip = side === "solo" && draft.soloClip ? draft.soloClip : null;
+  const audio = useSoloAudio(clip ? clip.audio : draft.audio, 0.9);
+  const marker = clip ? clip.leadIn : draft.leadIn;
 
   const level = useMemo(
-    () => rmsAfter(audio.buffer, draft.leadIn, 2),
-    [audio.buffer, draft.leadIn],
+    () => rmsAfter(audio.buffer, marker, 2),
+    [audio.buffer, marker],
   );
 
   const playhead = useMemo(() => {
@@ -67,18 +83,50 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
     return playedFrom + audio.progress * playedLength;
   }, [audio.isPlaying, audio.progress, playedFrom, playedLength]);
 
-  function preview(seconds: number) {
-    setPlayedFrom(draft.leadIn);
-    setPlayedLength(seconds);
-    audio.play(draft.leadIn, seconds);
-  }
+  const preview = useCallback(
+    (seconds: number) => {
+      setPlayedFrom(marker);
+      setPlayedLength(seconds);
+      audio.play(marker, seconds);
+    },
+    [audio, marker],
+  );
+
+  /* Space plays six seconds of whichever cut is on screen. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (event.code !== "Space" && event.key !== " ") return;
+      event.preventDefault();
+      if (audio.isPlaying) audio.stop();
+      else preview(PREVIEW);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [audio, preview]);
 
   function field<K extends keyof Solo>(key: K, value: Solo[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
+  /** Moving the marker on the solo cut moves that clip's entry point. */
+  function moveMarker(seconds: number) {
+    if (clip) {
+      setDraft((current) => ({
+        ...current,
+        soloClip: current.soloClip ? { ...current.soloClip, leadIn: seconds } : undefined,
+        soloAt: current.soloAt !== undefined
+          ? Number((current.soloAt + (seconds - clip.leadIn)).toFixed(3))
+          : undefined,
+      }));
+      return;
+    }
+    field("leadIn", seconds);
+  }
+
   async function save(extra: Partial<Solo> = {}) {
-    setBusy("saving");
+    setBusy(true);
     setError(null);
     try {
       const response = await fetch("/api/admin/solos", {
@@ -93,52 +141,7 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Save failed");
     } finally {
-      setBusy(null);
-    }
-  }
-
-  async function recut() {
-    setBusy("recutting");
-    setError(null);
-    try {
-      const response = await fetch("/api/admin/recut", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: draft.id, soloStart: recutAt }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Re-cut failed");
-      setDraft(data);
-      onSaved(data);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Re-cut failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  /**
-   * Cut the clip the hard levels play — the one that opens on the solo
-   * rather than on the tune. `soloAt` doubles as the entry point, so the
-   * scrubber's current position is what gets cut.
-   */
-  async function cutSoloClip() {
-    setBusy("solo-clip");
-    setError(null);
-    try {
-      const response = await fetch("/api/admin/solo-clip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: draft.id, soloAt: recutAt }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Could not cut the solo clip");
-      setDraft(data);
-      onSaved(data);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not cut the solo clip");
-    } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
@@ -186,9 +189,11 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
     onDeleted(draft.id);
   }
 
-  // The marker's position in the clip and its position in the source describe
-  // the same instant; showing both makes the re-cut field self-explanatory.
-  const sourceTime = solo.soloStart + (draft.leadIn - solo.leadIn);
+  // The marker's position in the clip and its position in the recording
+  // describe the same instant; showing both keeps the two connected.
+  const sourceTime = clip
+    ? (draft.soloAt ?? clip.start)
+    : solo.soloStart + (draft.leadIn - solo.leadIn);
 
   return (
     <div>
@@ -211,11 +216,58 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
         </span>
       </div>
 
-      <div className="mt-8">
+      {/* Every entry cut from this recording, so a record with three soloists
+          reads as one record rather than three unrelated rows. */}
+      {siblings.length > 1 && (
+        <ul className="mt-6 flex flex-wrap gap-2">
+          {siblings.map((sibling) => (
+            <li key={sibling.id}>
+              <span
+                className={`type-data inline-flex items-center gap-2 border px-3 py-1 text-xs ${
+                  sibling.id === draft.id
+                    ? "border-flame text-flame"
+                    : "border-ink-edge text-paper-dim"
+                }`}
+              >
+                <span className="block h-2 w-2 rounded-full bg-flame" aria-hidden="true" />
+                {sibling.soloist}
+                {sibling.soloAt !== undefined && ` · ${timecode(sibling.soloAt)}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        {(["head", "solo"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            disabled={value === "solo" && !draft.soloClip}
+            onClick={() => setSide(value)}
+            className={`type-eyebrow border px-4 py-2 transition-colors disabled:opacity-30 ${
+              side === value
+                ? "border-flame bg-flame text-ink"
+                : "border-ink-edge text-paper-dim hover:text-paper"
+            }`}
+          >
+            {value === "head" ? t("library.headClip") : t("library.soloClip")}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => onRemark(siblings)}
+          className="type-eyebrow ml-auto border border-paper-faint px-4 py-2 text-paper transition-colors hover:border-flame hover:text-flame"
+        >
+          {t("mark.remark")}
+        </button>
+      </div>
+
+      <div className="mt-5">
         <Waveform
           buffer={audio.buffer}
-          marker={draft.leadIn}
-          onMarkerChange={(seconds) => field("leadIn", seconds)}
+          marker={marker}
+          onMarkerChange={moveMarker}
           playhead={playhead}
         />
       </div>
@@ -223,7 +275,7 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
       <div className="mt-6 grid gap-6 sm:grid-cols-2">
         <div>
           <span className="type-eyebrow text-paper-faint">{t("library.inClip")}</span>
-          <div className="type-data mt-2 text-2xl text-paper">{timecode(draft.leadIn)}</div>
+          <div className="type-data mt-2 text-2xl text-paper">{timecode(marker)}</div>
         </div>
         <div>
           <span className="type-eyebrow text-paper-faint">{t("library.inSource")}</span>
@@ -245,7 +297,11 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
             type="button"
             onClick={() => preview(seconds)}
             disabled={audio.status !== "ready"}
-            className="type-data border border-ink-edge px-4 py-2 text-sm text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-30"
+            className={`type-data border px-4 py-2 text-sm transition-colors disabled:opacity-30 ${
+              seconds === PREVIEW
+                ? "border-flame text-flame"
+                : "border-ink-edge text-paper hover:border-flame hover:text-flame"
+            }`}
           >
             {seconds}s
           </button>
@@ -259,21 +315,22 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
             {t("library.stop")}
           </button>
         )}
+        <span className="type-body ml-auto text-xs text-paper-faint">{t("library.spaceHint")}</span>
       </div>
 
       <div className="mt-8 flex flex-wrap gap-3">
         <button
           type="button"
           onClick={() => save({ verified: true })}
-          disabled={busy !== null}
+          disabled={busy}
           className="type-eyebrow bg-flame px-5 py-3 text-ink transition-colors hover:bg-paper disabled:opacity-40"
         >
-          {busy === "saving" ? t("library.saving") : t("library.markVerified")}
+          {busy ? t("library.saving") : t("library.markVerified")}
         </button>
         <button
           type="button"
           onClick={() => save()}
-          disabled={busy !== null}
+          disabled={busy}
           className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
         >
           {t("library.save")}
@@ -290,68 +347,6 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
       {error && <p className="type-body mt-4 text-sm text-flame">{error}</p>}
 
       <section className="mt-12 border-t border-ink-edge pt-8">
-        <h3 className="type-eyebrow text-flame">{t("library.wholeRecording")}</h3>
-        <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
-          {t("library.wholeRecordingHelp")}
-        </p>
-
-        <div className="mt-5">
-          <SourceScrubber
-            duration={draft.sourceDuration ?? 0}
-            windowStart={Math.max(0, draft.soloStart - draft.leadIn)}
-            windowLength={draft.clipDuration}
-            value={recutAt}
-            onChange={setRecutAt}
-          />
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <input
-            type="number"
-            min={0}
-            max={Math.floor(draft.sourceDuration ?? 0)}
-            value={recutAt}
-            onChange={(event) => setRecutAt(Number(event.target.value) || 0)}
-            className="type-data w-24 border border-ink-edge bg-ink-raised px-4 py-3 text-paper focus:border-flame focus:outline-none"
-          />
-          <span className="type-data text-xs text-paper-faint">seconds</span>
-          <button
-            type="button"
-            onClick={recut}
-            disabled={busy !== null || recutAt === Math.round(draft.soloStart)}
-            className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
-          >
-            {busy === "recutting" ? t("library.importing") : t("library.recutHere")}
-          </button>
-
-          <button
-            type="button"
-            onClick={cutSoloClip}
-            disabled={busy !== null}
-            className="type-eyebrow border border-ink-edge px-5 py-3 text-paper-dim transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
-          >
-            {busy === "solo-clip" ? t("library.importing") : t("library.cutSoloClip")}
-          </button>
-        </div>
-
-        <p className="type-body mt-3 text-xs leading-relaxed text-paper-faint">
-          {draft.soloClip
-            ? t("library.soloClipCut", { time: timecode(draft.soloClip.start) })
-            : t("library.soloClipMissing")}
-        </p>
-
-        <div className="mt-6 aspect-video w-full border border-ink-edge">
-          <iframe
-            title={`${draft.song} source`}
-            className="h-full w-full"
-            src={`https://www.youtube-nocookie.com/embed/${draft.youtubeId}?start=${Math.max(0, Math.floor(recutAt))}`}
-            allow="encrypted-media"
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
-        </div>
-      </section>
-
-      <section className="mt-12 border-t border-ink-edge pt-8">
         <h3 className="type-eyebrow text-flame">{t("library.soloist")}</h3>
         <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
           {t("library.soloistHelp")}
@@ -364,9 +359,10 @@ export function SoloEditor({ solo, onSaved, onDeleted }: SoloEditorProps) {
           {/* The leader is always offered, even when the credits omit them. */}
           {[
             ...new Set([
+              draft.soloist,
               draft.artist,
               ...draft.personnel.map((credit) => credit.name).filter(Boolean),
-            ]),
+            ].filter(Boolean)),
           ].map((name) => (
             <option key={name} value={name}>
               {name}

@@ -19,6 +19,8 @@ export const DATA_DIR = process.env.HEARDZZ_DATA_DIR
   : path.join(process.cwd(), "data");
 
 export const AUDIO_DIR = path.join(DATA_DIR, "audio");
+/** Whole recordings, held only while somebody is marking one up. */
+export const SOURCE_DIR = path.join(DATA_DIR, "sources");
 export const LIBRARY_PATH = path.join(DATA_DIR, "solos.json");
 export const SUGGESTIONS_PATH = path.join(DATA_DIR, "suggestions.json");
 
@@ -27,6 +29,13 @@ const SAFE_FILE = /^[a-z0-9][a-z0-9-]{0,120}\.mp3$/;
 
 export function isSafeAudioName(name: string): boolean {
   return SAFE_FILE.test(name);
+}
+
+/** Held recordings are named by their YouTube id, which is not a slug. */
+const SAFE_SOURCE = /^[A-Za-z0-9_-]{5,20}\.mp3$/;
+
+export function isSafeSourceName(name: string): boolean {
+  return SAFE_SOURCE.test(name);
 }
 
 /** The URL the browser uses for a clip. */

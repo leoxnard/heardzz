@@ -102,6 +102,23 @@ export interface Solo {
   note?: string;
 }
 
+/**
+ * One position on a recording, as it is marked up.
+ *
+ * The marking screen works in these: a place in the tune, whoever is playing
+ * there, and anything worth saying about it. Cutting turns each one into a
+ * Solo entry — the two are deliberately not the same shape, because a mark
+ * exists before any clip does.
+ */
+export interface MarkedSolo {
+  /** Set when the mark stands for an entry that already exists. */
+  id?: string;
+  /** Seconds into the recording. */
+  at: number;
+  soloist: string;
+  note?: string;
+}
+
 export interface SoloLibrary {
   version: number;
   solos: Solo[];
