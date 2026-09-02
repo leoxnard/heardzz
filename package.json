@@ -16,6 +16,7 @@
     "cut-solos": "node scripts/cut-solo-clips.mjs"
   },
   "dependencies": {
+    "@ai-sdk/google": "^4.0.63",
     "ai": "^7.0.91",
     "next": "16.3.4",
     "react": "19.2.8",

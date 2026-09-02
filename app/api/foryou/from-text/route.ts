@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { generateText, Output } from "ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { z } from "zod";
 import { callerKey, take } from "@/lib/rate-limit";
 import { tidalAvailable, tidalUnavailableReason } from "@/lib/tidal";
 import { resolveArtistNames } from "@/lib/taste-text";
 import { tasteFromArtistIds } from "@/lib/taste";
+
+/**
+ * Called direct rather than through the AI Gateway: this deployment already
+ * carries its own Gemini key, and the gateway's default env var
+ * (`AI_GATEWAY_API_KEY`) is a second credential nobody asked for.
+ */
+const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,7 +46,7 @@ const taste = z.object({
  */
 async function namesFrom(text: string): Promise<string[]> {
   const { output } = await generateText({
-    model: "google/gemini-3.8-flash",
+    model: google("gemini-3.8-flash"),
     output: Output.object({ schema: taste }),
     prompt:
       "A listener typed the following to describe the jazz they want to hear:\n\n" +
@@ -59,9 +67,9 @@ async function namesFrom(text: string): Promise<string[]> {
  * from it the way `/api/foryou/plan` widens out from a link.
  */
 export async function POST(request: Request) {
-  if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
+  if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
-      { error: "AI_GATEWAY_API_KEY is not set." },
+      { error: "GEMINI_API_KEY is not set." },
       { status: 400 },
     );
   }
