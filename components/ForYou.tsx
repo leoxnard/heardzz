@@ -57,7 +57,7 @@ export function ForYou() {
     if (planning.current || !targetRef.current) return;
     planning.current = true;
     try {
-      const response = await fetch("/api/admin/foryou/plan", {
+      const response = await fetch("/api/foryou/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: targetRef.current }),
@@ -111,7 +111,7 @@ export function ForYou() {
         setRemaining(queue.current.length);
 
         try {
-          const response = await fetch("/api/admin/foryou/fetch", {
+          const response = await fetch("/api/foryou/fetch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ candidate }),
@@ -140,7 +140,7 @@ export function ForYou() {
     setSolos([]);
 
     try {
-      const response = await fetch("/api/admin/foryou/plan", {
+      const response = await fetch("/api/foryou/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: target.trim() }),

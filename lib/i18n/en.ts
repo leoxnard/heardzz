@@ -11,6 +11,7 @@ export const en = {
   nav: {
     daily: "Today",
     practice: "Practice",
+    forYou: "For you",
     stats: "Stats",
     settings: "Settings",
     admin: "Library",

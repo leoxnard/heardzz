@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cutFromSource, dropSource, searchCandidates } from "@/scripts/extract.mjs";
-import { requireAdmin } from "@/lib/admin-guard";
+import { callerKey, take } from "@/lib/rate-limit";
 import { ephemeralId, toSolo, type Cut } from "@/lib/ephemeral";
 import { trackAlbum } from "@/lib/tidal";
 import { pickBest, searchPhrase, type SearchHit } from "@/lib/tidal-youtube";
@@ -9,6 +9,17 @@ import type { Candidate } from "@/lib/tidal-candidates";
 export const dynamic = "force-dynamic";
 /** A download and a cut, for one record. */
 export const maxDuration = 300;
+
+/**
+ * The one that costs something.
+ *
+ * Every call here is a download off YouTube and a pass of ffmpeg, run
+ * because a stranger asked for it. Forty an hour is a long sitting and a
+ * bounded amount of work; without a ceiling this endpoint is an open
+ * invitation to spend somebody else's bandwidth.
+ */
+const ROUNDS = 40;
+const ROUND_WINDOW_MS = 60 * 60 * 1000;
 
 /**
  * Fetch one planned round and cut its opening.
@@ -22,8 +33,13 @@ export const maxDuration = 300;
  * going to be marked up later.
  */
 export async function POST(request: Request) {
-  const denied = await requireAdmin();
-  if (denied) return denied;
+  const limit = take(`foryou-fetch:${callerKey(request)}`, ROUNDS, ROUND_WINDOW_MS);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: `That is enough for now. Try again in ${Math.ceil(limit.retryAfter / 60)} minutes.` },
+      { status: 429 },
+    );
+  }
 
   const body = (await request.json()) as { candidate?: Candidate };
   const candidate = body.candidate;

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ReportPanel } from "./ReportPanel";
 import { Sleeve } from "./Sleeve";
 import { Board } from "./Board";
@@ -451,11 +452,7 @@ export function Game({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Header
-        mode={mode}
-        catalog={solo.catalog}
-        onOpen={setPanel}
-      />
+      <Header catalog={solo.catalog} onOpen={setPanel} />
 
       <main className="grid flex-1 grid-cols-1 lg:grid-cols-[1.05fr_1fr]">
         <section className="border-b border-ink-edge lg:border-b-0 lg:border-r">
@@ -594,12 +591,18 @@ export function Game({
 }
 
 function Header({
-  mode, catalog, onOpen,
+  catalog, onOpen,
 }: {
-  mode: Mode;
   catalog: string;
   onOpen: (panel: "settings" | "stats") => void;
 }) {
+  /*
+   * Which link is lit follows the address, not the mode. A sitting built
+   * from somebody's taste runs in practice mode, so keying off the mode
+   * would light "practice" while they are somewhere else entirely.
+   */
+  const path = usePathname();
+
   return (
     <header className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-ink-edge px-6 py-4 sm:px-10 lg:px-14">
       <Link href="/" className="flex items-center gap-3">
@@ -608,9 +611,10 @@ function Header({
       </Link>
 
       <nav className="flex gap-6">
-        <NavLink href="/" active={mode === "daily"}>{t("nav.daily")}</NavLink>
-        <NavLink href="/practice" active={mode === "practice"}>{t("nav.practice")}</NavLink>
-        <NavLink href="/suggest" active={false}>{t("nav.suggest")}</NavLink>
+        <NavLink href="/" active={path === "/"}>{t("nav.daily")}</NavLink>
+        <NavLink href="/practice" active={path === "/practice"}>{t("nav.practice")}</NavLink>
+        <NavLink href="/for-you" active={path === "/for-you"}>{t("nav.forYou")}</NavLink>
+        <NavLink href="/suggest" active={path === "/suggest"}>{t("nav.suggest")}</NavLink>
       </nav>
 
       <div className="ml-auto flex items-center gap-5">

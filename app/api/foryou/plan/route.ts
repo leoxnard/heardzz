@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { checkTools } from "@/scripts/extract.mjs";
-import { requireAdmin } from "@/lib/admin-guard";
+import { callerKey, take } from "@/lib/rate-limit";
 import { sweep } from "@/lib/ephemeral";
 import { parseTidalRef, tidalAvailable, tidalUnavailableReason } from "@/lib/tidal";
 import { tasteFrom } from "@/lib/taste";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+/**
+ * Reading a taste is cheap — TIDAL only — but it is the door to the fetching
+ * below, so it is held to a few sittings an hour rather than left open.
+ */
+const PLANS = 8;
+const PLAN_WINDOW_MS = 60 * 60 * 1000;
 
 /**
  * Read a taste and hand back a long list of records to try.
@@ -20,9 +27,6 @@ export const maxDuration = 300;
  * Nothing here downloads and nothing here touches the library.
  */
 export async function POST(request: Request) {
-  const denied = await requireAdmin();
-  if (denied) return denied;
-
   if (!tidalAvailable()) {
     return NextResponse.json({ error: tidalUnavailableReason() }, { status: 400 });
   }
@@ -33,6 +37,19 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Paste a TIDAL playlist, artist or track link." },
       { status: 400 },
+    );
+  }
+
+  /*
+   * Counted only once the link is known to be a link. A mistyped address
+   * costs nothing to refuse, and spending one of somebody's few sittings on
+   * a typo is a mean way to meet them.
+   */
+  const limit = take(`foryou-plan:${callerKey(request)}`, PLANS, PLAN_WINDOW_MS);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: `Too many sittings. Try again in ${Math.ceil(limit.retryAfter / 60)} minutes.` },
+      { status: 429 },
     );
   }
 

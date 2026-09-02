@@ -1,20 +1,21 @@
-import { notFound, redirect } from "next/navigation";
 import { ForYou } from "@/components/ForYou";
-import { adminAvailable, isAdmin } from "@/lib/auth";
+import { tidalAvailable } from "@/lib/tidal";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Behind the admin guard while the idea is being tried out.
+ * Open to anyone, and rate-limited rather than guarded.
  *
- * Opening it would mean this server downloading from YouTube whenever a
- * stranger asks it to, which is a different thing from fetching the records
- * you chose yourself — in load, in cost, and in what it is doing on your
- * behalf. That decision is worth making separately from whether the mode
- * is any fun.
+ * Every round here is a download this server makes because a visitor asked
+ * it to, so the ceilings in the two routes are not a formality — they are
+ * the thing that keeps an open page from being an open tab on somebody
+ * else's bandwidth.
+ *
+ * Without TIDAL credentials the mode cannot work at all, so it does not
+ * exist rather than existing and failing at the first click.
  */
-export default async function ForYouPage() {
-  if (!adminAvailable()) notFound();
-  if (!(await isAdmin())) redirect("/login");
+export default function ForYouPage() {
+  if (!tidalAvailable()) notFound();
   return <ForYou />;
 }
