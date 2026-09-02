@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Game } from "@/components/Game";
 import type { Solo } from "@/lib/types";
@@ -39,6 +40,13 @@ interface StoredSession {
   solos: Solo[];
   queue: Candidate[];
   offered: string[];
+  /**
+   * Whether there is any point asking for another wave. False for a sitting
+   * built out of somebody's own listening, where the first read was the
+   * whole supply — see `/api/foryou/lastfm`. Stored with the rest so a
+   * reload does not start asking for waves that were never coming.
+   */
+  replan: boolean;
 }
 
 export function ForYou() {
@@ -71,6 +79,13 @@ export function ForYou() {
   const running = useRef(false);
   /** The link this sitting was built from, for asking again. */
   const targetRef = useRef("");
+  /**
+   * Whether asking again would bring anything back. A round built out of
+   * somebody's own listening arrives complete — the one read was the whole
+   * supply — so this stops the poll below from spending that sitting's
+   * remaining reads on a question with no new answer.
+   */
+  const canReplan = useRef(true);
 
   /*
    * Mirrors of state that a background arrival needs to write to storage
@@ -92,6 +107,7 @@ export function ForYou() {
         solos: solosRef.current,
         queue: queue.current,
         offered: Array.from(offered.current),
+        replan: canReplan.current,
       };
       window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
     } catch {
@@ -120,6 +136,9 @@ export function ForYou() {
       queue.current = Array.isArray(data.queue) ? data.queue : [];
       setRemaining(queue.current.length);
       offered.current = new Set(data.offered ?? []);
+      // Sittings stored before there were two difficulties carry no flag,
+      // and every one of those was a widened round that could be asked again.
+      canReplan.current = data.replan ?? true;
       setPhase("playing");
     } catch {
       // A corrupt session is no different from none.
@@ -130,7 +149,7 @@ export function ForYou() {
 
   /** Ask TIDAL for another wave, keeping only what has not been offered. */
   const replan = useCallback(async () => {
-    if (planning.current || !targetRef.current) return;
+    if (planning.current || !targetRef.current || !canReplan.current) return;
     planning.current = true;
     try {
       const response = await fetch("/api/foryou/plan", {
@@ -232,6 +251,9 @@ export function ForYou() {
       if (!response.ok) throw new Error(data.error ?? "Could not read that");
 
       targetRef.current = (data.target as string | undefined) ?? resolvedTarget;
+      // Only the easy Last.fm round says no; every other door can be asked
+      // for another wave and so leaves this unset.
+      canReplan.current = (data.replan as boolean | undefined) ?? true;
       offered.current = new Set(
         (data.candidates as Candidate[]).map((c) => `${c.artist}|${c.song}`.toLowerCase()),
       );
@@ -292,19 +314,26 @@ export function ForYou() {
   }
 
   /**
-   * Same sitting again, built from what somebody has actually listened to.
-   * Like the words door, this one resolves to artist ids server-side, so
-   * there is no link to replan from and the response carries its own
-   * `target`.
+   * Same sitting again, built from what somebody has actually listened to,
+   * at whichever of the two difficulties they picked.
+   *
+   * "known" is the gentle one: the records already in their history, so
+   * every round is one they have heard — often hundreds of times. "wider"
+   * keeps only *who* they listen to and widens to artists they have not
+   * played, which is the same bargain a pasted playlist strikes.
+   *
+   * Neither carries a link to replan from, so the response brings its own
+   * `target` — and the easy one brings its whole supply at once, which is
+   * what `replan: false` in that response settles.
    */
-  function startFromLastfm() {
+  function startFromLastfm(mode: "known" | "wider") {
     const trimmed = listener.trim();
     void beginSession(
       () =>
         fetch("/api/foryou/lastfm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user: trimmed }),
+          body: JSON.stringify({ user: trimmed, mode }),
         }),
       "",
     );
@@ -329,6 +358,7 @@ export function ForYou() {
     solosRef.current = [];
     queue.current = [];
     offered.current = new Set();
+    canReplan.current = true;
 
     setTarget("");
     setWords("");
@@ -389,106 +419,226 @@ export function ForYou() {
   }
 
   const busy = phase === "planning" || phase === "fetching";
+  const label =
+    phase === "planning"
+      ? "Reading your taste"
+      : phase === "fetching"
+        ? `Fetching (${ready} ready)`
+        : "Build me a round";
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16 sm:px-10">
-      <h1 className="type-display text-flame">Records for you</h1>
-      <p className="type-body mt-4 text-sm leading-relaxed text-paper-faint">
-        Paste a public TIDAL playlist. It reads who is on it, widens that to
-        artists who sound like them, and builds a round out of records this
-        site cannot currently play — fetched while you play the first one.
+    <div className="mx-auto max-w-5xl px-6 py-16 sm:px-10">
+      <p className="type-eyebrow text-paper-faint">Three ways in</p>
+      <h1 className="type-display mt-3 text-flame">Records for you</h1>
+      <p className="type-body mt-4 max-w-xl text-sm leading-relaxed text-paper-faint">
+        A round built out of your own taste, from records this site cannot
+        currently play — fetched while you play the first one. Take whichever
+        door you already have the key to.
       </p>
 
-      <div className="mt-8 flex flex-wrap gap-3">
-        <input
-          type="text"
-          value={target}
-          onChange={(event) => setTarget(event.target.value)}
+      {/*
+        One door per source, told apart by its own mark and its own accent
+        rather than by the label alone — three identical fields stacked in a
+        column made the choice look like a form to fill in top to bottom,
+        which it never was. The accent rides a CSS variable so each panel's
+        border, focus ring and button follow the mark above them.
+      */}
+      <div className="mt-12 grid gap-px border border-ink-edge bg-ink-edge lg:grid-cols-3">
+        <Door
+          index="01"
+          accent="var(--color-paper)"
+          mark={
+            <Image
+              src="/brand/tidal-wordmark.png"
+              alt="TIDAL"
+              width={753}
+              height={100}
+              className="h-4 w-auto opacity-90"
+              priority
+            />
+          }
+          title="A playlist you keep"
+          blurb="Paste a public TIDAL playlist. It reads who is on it and widens that to artists who sound like them."
           placeholder="https://tidal.com/playlist/…"
-          disabled={busy}
-          className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-4 py-3 text-sm text-paper focus:border-flame focus:outline-none disabled:opacity-50"
+          value={target}
+          onChange={setTarget}
+          onSubmit={start}
+          busy={busy}
+          label={label}
         />
-        <button
-          type="button"
-          onClick={start}
-          disabled={busy || !target.trim()}
-          className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
-        >
-          {phase === "planning"
-            ? "Reading your taste"
-            : phase === "fetching"
-              ? `Fetching (${ready} ready)`
-              : "Build me a round"}
-        </button>
-      </div>
 
-      <p className="type-eyebrow mt-10 text-paper-faint">Or say who, or what</p>
-      <p className="type-body mt-2 text-sm leading-relaxed text-paper-faint">
-        No playlist? Name whoever you want to hear, or just describe it —
-        a genre, an era, a mood — and a model reads artists out of it. The
-        round is built from those, the same way.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        <input
-          type="text"
-          value={words}
-          onChange={(event) => setWords(event.target.value)}
+        <Door
+          index="02"
+          accent="var(--color-flame)"
+          /*
+            No logo exists for saying what you want, so the mark is the ask
+            itself: an oversized quote, set in the display face, standing
+            where the two wordmarks stand.
+          */
+          mark={
+            <span
+              aria-hidden
+              className="type-display block h-5 text-[3rem] leading-[0.42] text-flame"
+            >
+              &ldquo;&nbsp;&rdquo;
+            </span>
+          }
+          title="Whatever you can name"
+          blurb="Name whoever you want to hear, or just describe it — a genre, an era, a mood — and a model reads artists out of it."
           placeholder="Michael Brecker only, or hard bop"
-          disabled={busy}
-          className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-4 py-3 text-sm text-paper focus:border-flame focus:outline-none disabled:opacity-50"
+          value={words}
+          onChange={setWords}
+          onSubmit={startFromWords}
+          busy={busy}
+          label={label}
         />
-        <button
-          type="button"
-          onClick={startFromWords}
-          disabled={busy || !words.trim()}
-          className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
-        >
-          {phase === "planning"
-            ? "Reading your taste"
-            : phase === "fetching"
-              ? `Fetching (${ready} ready)`
-              : "Build me a round"}
-        </button>
-      </div>
 
-      <p className="type-eyebrow mt-10 text-paper-faint">Or from Last.fm</p>
-      <p className="type-body mt-2 text-sm leading-relaxed text-paper-faint">
-        Your username is enough — it reads the artists you have played most
-        and builds the round out from those. Nothing to log in to, and it
-        only ever reads.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        <input
-          type="text"
-          value={listener}
-          onChange={(event) => setListener(event.target.value)}
+        <Door
+          index="03"
+          accent="#d51007"
+          mark={
+            <Image
+              src="/brand/lastfm.webp"
+              alt="Last.fm"
+              width={1920}
+              height={486}
+              /* Brand red on near-black sits close to unreadable at this
+                 size, so it gets a touch of lift rather than a recolour. */
+              className="h-[1.15rem] w-auto [filter:brightness(1.25)_saturate(1.1)]"
+            />
+          }
+          title="What you already played"
+          blurb="Your username is enough. Play the records already in your history — you have heard every one of them — or keep only your taste and go out to artists you have not."
           placeholder="your last.fm username"
-          disabled={busy}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-4 py-3 text-sm text-paper focus:border-flame focus:outline-none disabled:opacity-50"
+          value={listener}
+          onChange={setListener}
+          onSubmit={() => startFromLastfm("known")}
+          busy={busy}
+          label={label}
+          lowercase
+          submitLabel="Records I know"
+          alternate={{ label: "Go wider", onSubmit: () => startFromLastfm("wider") }}
         />
-        <button
-          type="button"
-          onClick={startFromLastfm}
-          disabled={busy || !listener.trim()}
-          className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
-        >
-          {phase === "planning"
-            ? "Reading your taste"
-            : phase === "fetching"
-              ? `Fetching (${ready} ready)`
-              : "Build me a round"}
-        </button>
       </div>
 
       {reached.length > 0 && (
-        <p className="type-body mt-4 text-xs leading-relaxed text-paper-faint">
+        <p className="type-body mt-6 text-xs leading-relaxed text-paper-faint">
           Reaching for {reached.join(", ")}.
         </p>
       )}
-      {error && <p className="type-body mt-4 text-sm text-flame">{error}</p>}
+      {error && <p className="type-body mt-6 text-sm text-flame">{error}</p>}
     </div>
+  );
+}
+
+/**
+ * One way in. Everything that differs between the three — the mark, the
+ * accent, the words — arrives as a prop, so the three panels stay one
+ * shape without reading as one repeated field.
+ */
+function Door({
+  index,
+  accent,
+  mark,
+  title,
+  blurb,
+  placeholder,
+  value,
+  onChange,
+  onSubmit,
+  busy,
+  label,
+  lowercase = false,
+  submitLabel,
+  alternate,
+}: {
+  index: string;
+  accent: string;
+  mark: React.ReactNode;
+  title: string;
+  blurb: string;
+  placeholder: string;
+  value: string;
+  onChange: (next: string) => void;
+  onSubmit: () => void;
+  busy: boolean;
+  label: string;
+  lowercase?: boolean;
+  /**
+   * Names the primary action where "build me a round" is too vague to pick
+   * by — which is any door offering more than one. Only while idle: once a
+   * sitting is being read, the shared progress label says the useful thing.
+   */
+  submitLabel?: string;
+  /**
+   * A second way through the same door. The Last.fm one has two
+   * difficulties over one username, and a door per difficulty would have
+   * meant asking for that username twice.
+   */
+  alternate?: { label: string; onSubmit: () => void };
+}) {
+  const filled = value.trim().length > 0;
+  const primary = busy ? label : (submitLabel ?? label);
+
+  return (
+    <section
+      style={{ ["--accent" as string]: accent }}
+      className="group flex flex-col bg-ink p-6 transition-colors focus-within:bg-ink-raised sm:p-8"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex h-5 items-center">{mark}</div>
+        <span className="type-data text-[0.65rem] text-paper-faint">{index}</span>
+      </div>
+
+      <h2 className="type-eyebrow mt-8 text-paper">{title}</h2>
+      <p className="type-body mt-3 flex-1 text-sm leading-relaxed text-paper-faint">
+        {blurb}
+      </p>
+
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && filled && !busy) onSubmit();
+        }}
+        placeholder={placeholder}
+        disabled={busy}
+        autoCapitalize={lowercase ? "none" : undefined}
+        autoCorrect={lowercase ? "off" : undefined}
+        spellCheck={lowercase ? false : undefined}
+        style={{ borderBottomColor: filled ? accent : undefined }}
+        className="type-body mt-8 w-full border-b border-ink-edge bg-transparent pb-2 text-sm text-paper placeholder:text-paper-faint focus:outline-none disabled:opacity-50"
+      />
+
+      {/*
+        Two buttons rather than a toggle above the field: the difficulty is
+        the last decision made here, and a toggle would have it set silently
+        before the username is even typed. Naming both as verbs makes the
+        choice the click itself.
+      */}
+      <div className="mt-5 flex flex-wrap items-baseline gap-x-5 gap-y-2">
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={busy || !filled}
+          style={{ color: filled && !busy ? accent : undefined }}
+          className="type-eyebrow self-start text-xs text-paper-faint transition-colors disabled:opacity-40"
+        >
+          {primary} &rarr;
+        </button>
+
+        {alternate && !busy && (
+          <button
+            type="button"
+            onClick={alternate.onSubmit}
+            disabled={!filled}
+            className="type-eyebrow self-start text-xs text-paper-faint underline decoration-ink-edge underline-offset-4 transition-colors hover:text-paper disabled:opacity-40"
+          >
+            {alternate.label}
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
