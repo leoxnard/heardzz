@@ -23,8 +23,27 @@ const BUFFER = 3;
 /** Below this many untried candidates, go back to TIDAL for more. */
 const REPLAN_AT = 4;
 
+/**
+ * Everything needed to pick a sitting back up, written after every arrival
+ * so a reload lands where the listener left off rather than at the door.
+ * `heardzz:practice:v1` already survives a reload on its own — this is the
+ * rest of what that number needs to mean something: which records it is
+ * counting into.
+ */
+const SESSION_STORAGE_KEY = "heardzz:foryou:v1";
+
+interface StoredSession {
+  target: string;
+  source: string;
+  reached: string[];
+  solos: Solo[];
+  queue: Candidate[];
+  offered: string[];
+}
+
 export function ForYou() {
   const [target, setTarget] = useState("");
+  const [words, setWords] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [solos, setSolos] = useState<Solo[]>([]);
@@ -52,6 +71,62 @@ export function ForYou() {
   /** The link this sitting was built from, for asking again. */
   const targetRef = useRef("");
 
+  /*
+   * Mirrors of state that a background arrival needs to write to storage
+   * without waiting for React to re-render first — `solos` read inside a
+   * callback closed over at mount would still be the empty array it opened
+   * with.
+   */
+  const solosRef = useRef<Solo[]>([]);
+  const sourceRef = useRef("");
+  const reachedRef = useRef<string[]>([]);
+
+  const persistSession = useCallback(() => {
+    if (!targetRef.current) return;
+    try {
+      const session: StoredSession = {
+        target: targetRef.current,
+        source: sourceRef.current,
+        reached: reachedRef.current,
+        solos: solosRef.current,
+        queue: queue.current,
+        offered: Array.from(offered.current),
+      };
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    } catch {
+      // Nothing worth resuming is worth failing the sitting over.
+    }
+  }, []);
+
+  /** Pick up a sitting left mid-play, rather than starting the listener over. */
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as Partial<StoredSession>;
+      if (!data.target || !Array.isArray(data.solos) || data.solos.length === 0) return;
+
+      targetRef.current = data.target;
+      setTarget(data.target);
+      sourceRef.current = data.source ?? "";
+      setSource(data.source ?? "");
+      reachedRef.current = data.reached ?? [];
+      setReached(data.reached ?? []);
+      solosRef.current = data.solos;
+      setSolos(data.solos);
+      setReady(data.solos.length);
+      queue.current = Array.isArray(data.queue) ? data.queue : [];
+      setRemaining(queue.current.length);
+      offered.current = new Set(data.offered ?? []);
+      setPhase("playing");
+    } catch {
+      // A corrupt session is no different from none.
+    }
+    // Read once, at mount, before anything else has a chance to touch storage.
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   /** Ask TIDAL for another wave, keeping only what has not been offered. */
   const replan = useCallback(async () => {
     if (planning.current || !targetRef.current) return;
@@ -74,12 +149,13 @@ export function ForYou() {
 
       queue.current = [...queue.current, ...fresh];
       setRemaining(queue.current.length);
+      persistSession();
     } catch {
       // The sitting carries on with what it has.
     } finally {
       planning.current = false;
     }
-  }, []);
+  }, [persistSession]);
 
   /**
    * Keep the pool topped up, for as long as somebody keeps playing.
@@ -118,10 +194,12 @@ export function ForYou() {
           });
           const data = await response.json();
           if (response.ok && data.solo) {
-            setSolos((current) => [...current, data.solo as Solo]);
+            solosRef.current = [...solosRef.current, data.solo as Solo];
+            setSolos(solosRef.current);
             setReady((n) => n + 1);
             setPhase("playing");
             added++;
+            persistSession();
           }
         } catch {
           // Dropped, deliberately: see above.
@@ -130,31 +208,37 @@ export function ForYou() {
     } finally {
       topping.current = false;
     }
-  }, []);
+  }, [persistSession]);
 
-  async function start() {
+  /**
+   * Everything a plan response has in common, whichever door it came in by:
+   * a pasted TIDAL link, or a few words read by `/api/foryou/from-text`.
+   * `resolvedTarget` is what a replan asks for again — the link as pasted
+   * for a link, or the artist ids `from-text` resolved to for words, since
+   * there is no link to paste a second time.
+   */
+  async function beginSession(request: () => Promise<Response>, resolvedTarget: string) {
     if (running.current) return;
     running.current = true;
     setPhase("planning");
     setError(null);
     setSolos([]);
+    solosRef.current = [];
 
     try {
-      const response = await fetch("/api/foryou/plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: target.trim() }),
-      });
+      const response = await request();
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not read that");
 
-      targetRef.current = target.trim();
+      targetRef.current = (data.target as string | undefined) ?? resolvedTarget;
       offered.current = new Set(
         (data.candidates as Candidate[]).map((c) => `${c.artist}|${c.song}`.toLowerCase()),
       );
       queue.current = data.candidates as Candidate[];
       setRemaining(queue.current.length);
+      sourceRef.current = data.source ?? "";
       setSource(data.source ?? "");
+      reachedRef.current = data.reached ?? [];
       setReached(data.reached ?? []);
       setReady(0);
       setPhase("fetching");
@@ -177,6 +261,64 @@ export function ForYou() {
     } finally {
       running.current = false;
     }
+  }
+
+  function start() {
+    const trimmed = target.trim();
+    void beginSession(
+      () =>
+        fetch("/api/foryou/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: trimmed }),
+        }),
+      trimmed,
+    );
+  }
+
+  /** Same sitting, built from a few words instead of a pasted link. */
+  function startFromWords() {
+    const trimmed = words.trim();
+    void beginSession(
+      () =>
+        fetch("/api/foryou/from-text", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: trimmed }),
+        }),
+      "",
+    );
+  }
+
+  /**
+   * Leave this sitting for another one, entirely — not just a new round
+   * within it. The running count is zeroed the way `start` zeroes it for a
+   * fresh sitting, since the pool it was counting into no longer exists.
+   */
+  function switchPlaylist() {
+    try {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      window.localStorage.setItem("heardzz:practice:v1", "0");
+    } catch {
+      // A browser refusing storage is not a reason to refuse the switch.
+    }
+
+    targetRef.current = "";
+    sourceRef.current = "";
+    reachedRef.current = [];
+    solosRef.current = [];
+    queue.current = [];
+    offered.current = new Set();
+
+    setTarget("");
+    setWords("");
+    setSource("");
+    setReached([]);
+    setSolos([]);
+    setReady(0);
+    setRemaining(0);
+    setError(null);
+    setPhase("idle");
   }
 
   /*
@@ -206,11 +348,18 @@ export function ForYou() {
   if (phase === "playing" && solos.length > 0) {
     return (
       <div className="flex min-h-screen flex-col">
-        <div className="border-b border-ink-edge px-6 py-3 sm:px-10">
+        <div className="flex items-center justify-between gap-3 border-b border-ink-edge px-6 py-3 sm:px-10">
           <p className="type-body text-xs text-paper-faint">
             {solos.length} ready{remaining > 0 ? ", more coming" : ""}
             {source ? ` — from ${source}` : ""}
           </p>
+          <button
+            type="button"
+            onClick={switchPlaylist}
+            className="type-eyebrow shrink-0 text-xs text-paper-faint transition-colors hover:text-flame"
+          >
+            Switch playlist
+          </button>
         </div>
         {/* Practice: these are one-off rounds, not a shared daily. */}
         <Game solos={solos} mode="practice" ordered />
@@ -242,6 +391,34 @@ export function ForYou() {
           type="button"
           onClick={start}
           disabled={busy || !target.trim()}
+          className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+        >
+          {phase === "planning"
+            ? "Reading your taste"
+            : phase === "fetching"
+              ? `Fetching (${ready} ready)`
+              : "Build me a round"}
+        </button>
+      </div>
+
+      <p className="type-eyebrow mt-10 text-paper-faint">Or say who</p>
+      <p className="type-body mt-2 text-sm leading-relaxed text-paper-faint">
+        No playlist? Name whoever you want to hear and a model reads the
+        names out of it — the round is built from those, the same way.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <input
+          type="text"
+          value={words}
+          onChange={(event) => setWords(event.target.value)}
+          placeholder="Michael Brecker only"
+          disabled={busy}
+          className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-4 py-3 text-sm text-paper focus:border-flame focus:outline-none disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={startFromWords}
+          disabled={busy || !words.trim()}
           className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
         >
           {phase === "planning"

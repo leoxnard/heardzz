@@ -357,8 +357,13 @@ export async function trackByIsrc(isrc: string): Promise<TidalTrack | null> {
    ------------------------------------------------------------------ */
 
 export interface TidalRef {
-  kind: "artist" | "track" | "playlist";
+  kind: "artist" | "track" | "playlist" | "artists";
   id: string;
+  /**
+   * Set only when `kind` is "artists" — a taste read off free text rather
+   * than one link, so there is no single id to carry in `id`.
+   */
+  ids?: string[];
 }
 
 /**
@@ -372,10 +377,17 @@ export interface TidalRef {
 const NUMERIC = /^\d{1,12}$/;
 /** Playlists are UUIDs rather than numbers, so they parse separately. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * How a taste built from free text asks to be replanned: the artist ids it
+ * resolved to, comma-joined. Never typed by a person — only ever the value
+ * this module's own `/api/foryou/from-text` route hands back as `target`.
+ */
+const ARTIST_LIST = /^\d{1,12}(,\d{1,12})+$/;
 
 export function parseTidalRef(input: string): TidalRef | null {
   const text = String(input || "").trim();
   if (NUMERIC.test(text)) return { kind: "artist", id: text };
+  if (ARTIST_LIST.test(text)) return { kind: "artists", id: "", ids: text.split(",") };
   if (UUID.test(text)) return { kind: "playlist", id: text.toLowerCase() };
 
   const playlist = /tidal\.com\/(?:browse\/)?playlist\/([0-9a-f-]{36})/i.exec(text);

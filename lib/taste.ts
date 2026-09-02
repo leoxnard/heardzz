@@ -69,6 +69,11 @@ async function seedArtists(ref: TidalRef): Promise<{ ids: string[]; source: stri
     return { ids: [ref.id], source: "that artist" };
   }
 
+  // Only ever a replan of a taste read from free text — see `parseTidalRef`.
+  if (ref.kind === "artists") {
+    return { ids: ref.ids ?? [], source: "that taste" };
+  }
+
   if (ref.kind === "track") {
     const [credited] = await trackArtists(ref.id);
     return { ids: credited ? [credited.id] : [], source: credited?.name ?? "that track" };
@@ -94,6 +99,17 @@ async function seedArtists(ref: TidalRef): Promise<{ ids: string[]; source: stri
 
 export async function tasteFrom(ref: TidalRef): Promise<TasteResult> {
   const { ids, source } = await seedArtists(ref);
+  if (ids.length === 0) return { source, reached: [], candidates: [] };
+  return tasteFromArtistIds(ids, source);
+}
+
+/**
+ * The widening-and-building half of `tasteFrom`, split out so a taste that
+ * did not arrive as a TIDAL link — one read off free text by
+ * `/api/foryou/from-text` — can be built the same way once it has artist
+ * ids of its own.
+ */
+export async function tasteFromArtistIds(ids: string[], source: string): Promise<TasteResult> {
   if (ids.length === 0) return { source, reached: [], candidates: [] };
 
   /*
