@@ -1,7 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { LIBRARY_PATH } from "./paths";
-import { tuneKey } from "./slug";
 import type { Solo, SoloLibrary } from "./types";
+
+/*
+ * Duplicate matching moved to lib/duplicates.ts so the marking screen can run
+ * it while you type — this file reaches for node:fs and cannot be imported
+ * from a component. Re-exported because every caller already asks here.
+ */
+export { findDuplicates, recordKey } from "./duplicates";
 
 /**
  * Read from disk on every request rather than importing the JSON, so a clip
@@ -31,24 +37,4 @@ export async function loadLibrary(): Promise<SoloLibrary> {
 export async function loadSolos(): Promise<Solo[]> {
   const { solos } = await loadLibrary();
   return solos;
-}
-
-/**
- * Entries that are already this record.
- *
- * Two ways to be the same record and both of them count: the same upload, or
- * the same tune by the same artist off a different upload. A record with
- * three soloists returns three entries — that is one record, marked again,
- * not three duplicates.
- */
-export function findDuplicates(
-  solos: Solo[],
-  record: { youtubeId?: string; artist?: string; song?: string },
-): Solo[] {
-  const tune = record.artist && record.song ? tuneKey(record.artist, record.song) : null;
-
-  return solos.filter((solo) => {
-    if (record.youtubeId && solo.youtubeId === record.youtubeId) return true;
-    return tune !== null && tuneKey(solo.artist, solo.song) === tune;
-  });
 }

@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TrackMarker, type TrackMark, type View } from "./TrackMarker";
 import { useSoloAudio } from "@/lib/audio";
+import { cleanName } from "@/lib/clean";
+import { findDuplicates } from "@/lib/duplicates";
 import { t } from "@/lib/i18n";
 import type { Credit, MarkedSolo, Solo } from "@/lib/types";
-import type { SourceResult } from "@/app/api/admin/source/route";
+import type { DuplicateEntry, SourceResult } from "@/app/api/admin/source/route";
 
 /* ------------------------------------------------------------------
    Marking a record up.
@@ -52,6 +54,20 @@ interface SourceWorkbenchProps {
   saveLabel?: string;
   /** Open the entries this recording would duplicate, to mark them again. */
   onOpenExisting?: (ids: string[]) => void;
+  /**
+   * Already fetched, by whoever is running the queue, while the record
+   * before this one was being marked. Skips the wait entirely.
+   */
+  preloaded?: SourceResult | null;
+  /** That fetch is still running — wait for it rather than starting a second. */
+  preloading?: boolean;
+  /**
+   * The library, for checking as the fields are typed whether this record is
+   * already in it. The server answers the same question once, at fetch time,
+   * off whatever the title parser guessed; by the time the name has been
+   * corrected by hand that answer is about a different record.
+   */
+  library?: Solo[];
 }
 
 interface Draft {
@@ -82,6 +98,7 @@ function timecode(seconds: number): string {
 
 export function SourceWorkbench({
   seed, existing, onSaved, onCancel, queueNote, saveLabel, onOpenExisting,
+  preloaded, preloading, library,
 }: SourceWorkbenchProps) {
   const [target, setTarget] = useState(seed?.target ?? seed?.youtubeId ?? "");
   const [discogs, setDiscogs] = useState("");
@@ -117,11 +134,85 @@ export function SourceWorkbench({
 
   const duration = source?.duration ?? 0;
 
-  // Marking a record again is the one case where finding it in the library is
-  // the point rather than a mistake.
-  const duplicates = existing ? [] : (source?.duplicates ?? []);
+  /*
+   * Is this one already here?
+   *
+   * Asked continuously against the library rather than once at fetch time.
+   * The fetch-time answer is about whatever the title parser guessed — and
+   * the whole reason a name gets corrected in this form is that the guess
+   * was "So What (Official Audio)" and the library holds "So What". Typing
+   * the right title is what makes the two the same record, so that is when
+   * the question has to be asked again.
+   *
+   * Marking a record again is the one case where finding it in the library
+   * is the point rather than a mistake.
+   */
+  const duplicates = useMemo<DuplicateEntry[]>(() => {
+    if (existing) return [];
+
+    const live = (library ?? []).length > 0 && (source || draft.artist || draft.song)
+      ? findDuplicates(library ?? [], {
+          youtubeId: source?.youtubeId,
+          artist: cleanName(draft.artist),
+          song: cleanName(draft.song),
+        })
+      : [];
+
+    const byId = new Map<string, DuplicateEntry>();
+    for (const entry of [
+      ...(source?.duplicates ?? []),
+      ...live.map((solo) => ({
+        id: solo.id,
+        artist: solo.artist,
+        song: solo.song,
+        soloist: solo.soloist,
+      })),
+    ]) {
+      byId.set(entry.id, entry);
+    }
+    return [...byId.values()];
+  }, [existing, library, source, draft.artist, draft.song]);
 
   /* ---------------- fetching ---------------- */
+
+  /** Open a recording on the screen. Where it came from is not this one's business. */
+  const applySource = useCallback(
+    (held: SourceResult) => {
+      setSource(held);
+      setDraft((current) => ({
+        artist: current.artist || held.artist,
+        song: current.song || held.song,
+        album: current.album || held.album,
+        year: current.year || held.year,
+        note: current.note,
+        personnel: current.personnel.length ? current.personnel : held.personnel,
+        discogsReleaseId: current.discogsReleaseId ?? held.discogsReleaseId,
+      }));
+
+      // Existing entries come back as marks, so re-marking a record starts
+      // from where it already is rather than from nothing.
+      const known = existing ?? [];
+      const opening = known[0]?.soloStart ?? held.audibleStart;
+      setStart(opening);
+      setMarks(
+        known
+          .filter((solo) => solo.soloAt !== undefined)
+          .map((solo) => ({
+            key: solo.id,
+            id: solo.id,
+            at: solo.soloAt as number,
+            soloist: solo.soloist,
+            note: solo.note ?? "",
+          })),
+      );
+      setActiveId(START_ID);
+      setView({
+        start: Math.max(0, opening - 4),
+        length: Math.min(30, held.duration || 30),
+      });
+    },
+    [existing],
+  );
 
   const fetchSource = useCallback(
     async (link: string, discogsLink?: string) => {
@@ -136,55 +227,41 @@ export function SourceWorkbench({
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error ?? "Could not fetch that recording");
-
-        const held = data as SourceResult;
-        setSource(held);
-        setDraft((current) => ({
-          artist: current.artist || held.artist,
-          song: current.song || held.song,
-          album: current.album || held.album,
-          year: current.year || held.year,
-          note: current.note,
-          personnel: current.personnel.length ? current.personnel : held.personnel,
-          discogsReleaseId: current.discogsReleaseId ?? held.discogsReleaseId,
-        }));
-
-        // Existing entries come back as marks, so re-marking a record starts
-        // from where it already is rather than from nothing.
-        const known = existing ?? [];
-        const opening = known[0]?.soloStart ?? held.audibleStart;
-        setStart(opening);
-        setMarks(
-          known
-            .filter((solo) => solo.soloAt !== undefined)
-            .map((solo) => ({
-              key: solo.id,
-              id: solo.id,
-              at: solo.soloAt as number,
-              soloist: solo.soloist,
-              note: solo.note ?? "",
-            })),
-        );
-        setActiveId(START_ID);
-        setView({
-          start: Math.max(0, opening - 4),
-          length: Math.min(30, held.duration || 30),
-        });
+        applySource(data as SourceResult);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Could not fetch that recording");
       } finally {
         setBusy(null);
       }
     },
-    [existing],
+    [applySource],
   );
 
   const started = useRef(false);
   useEffect(() => {
     if (started.current || !seed?.autoFetch) return;
+
+    // Fetched already, in the background, while the record before this one
+    // was being marked: there is nothing to wait for.
+    //
+    // This does set state from an effect, and deliberately: the recording
+    // arrives from outside React — a fetch the screen above started before
+    // this one existed — and putting it on screen is exactly the "subscribe
+    // to an external system" the rule leaves room for. It runs once per
+    // record, guarded by `started`.
+    if (preloaded) {
+      started.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      applySource(preloaded);
+      return;
+    }
+    // Still on its way. Waiting costs nothing and starting a second download
+    // of the same recording costs a download.
+    if (preloading) return;
+
     started.current = true;
     void fetchSource(seed.target ?? seed.youtubeId ?? "");
-  }, [seed, fetchSource]);
+  }, [seed, preloaded, preloading, fetchSource, applySource]);
 
   /* ---------------- marks ---------------- */
 
@@ -283,9 +360,9 @@ export function SourceWorkbench({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           youtubeId: source.youtubeId,
-          artist: draft.artist,
-          song: draft.song,
-          album: draft.album,
+          artist: cleanName(draft.artist),
+          song: cleanName(draft.song),
+          album: cleanName(draft.album),
           year: draft.year,
           note: draft.note || undefined,
           personnel: draft.personnel,
@@ -356,7 +433,7 @@ export function SourceWorkbench({
 
   // A seeded record fetches itself; showing the paste form while that runs
   // offers a decision nobody is being asked to make.
-  if (!source && seed?.autoFetch && (busy === "fetching" || !error)) {
+  if (!source && seed?.autoFetch && (busy === "fetching" || preloading || !error)) {
     return (
       <div className="max-w-2xl">
         <h3 className="type-eyebrow text-flame">{t("mark.fetching")}</h3>

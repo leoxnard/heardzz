@@ -405,18 +405,147 @@ async function peakLevel(file) {
 }
 
 /**
+ * A level envelope of the opening: one RMS reading every tenth of a second.
+ *
+ * ffmpeg's `astats` is reset every frame and the readings printed to a file,
+ * which gives the shape of the opening without decoding anything twice.
+ * Returns [] when ffmpeg cannot be read, and the caller falls back.
+ */
+async function levelEnvelope(file, seconds = 120) {
+  const work = await mkdtemp(path.join(tmpdir(), "heardzz-env-"));
+  const report = path.join(work, "levels.txt");
+  try {
+    await run(
+      "ffmpeg",
+      [
+        "-hide_banner", "-nostats", "-loglevel", "error",
+        "-t", String(seconds),
+        "-i", file,
+        "-af", [
+          // Mono at 8k: this is measuring loudness over tenths of a second,
+          // and a stereo 44.1k decode measures the same thing far slower.
+          "aresample=8000",
+          "aformat=channel_layouts=mono",
+          `asetnsamples=n=${FRAME_SAMPLES}`,
+          "astats=metadata=1:reset=1",
+          `ametadata=print:key=lavfi.astats.Overall.RMS_level:file=${report}`,
+        ].join(","),
+        "-f", "null", "-",
+      ],
+      { maxBuffer: 1024 * 1024 * 8 },
+    );
+
+    const text = await readFile(report, "utf8");
+    const frames = [];
+    let at = null;
+    for (const line of text.split("\n")) {
+      const time = /^frame:\d+\s+pts:\S+\s+pts_time:([\d.]+)/.exec(line);
+      if (time) {
+        at = Number(time[1]);
+        continue;
+      }
+      const level = /RMS_level=(-?[\d.]+|-?inf)/.exec(line);
+      if (level && at !== null) {
+        frames.push({ at, db: level[1].includes("inf") ? -120 : Number(level[1]) });
+        at = null;
+      }
+    }
+    return frames;
+  } catch {
+    return [];
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+}
+
+/** 800 samples at 8 kHz — a tenth of a second per reading. */
+const FRAME_SAMPLES = 800;
+const FRAME_SECONDS = FRAME_SAMPLES / 8000;
+
+/** How long sound has to hold up to count as the music rather than a noise. */
+const SUSTAIN_SECONDS = 0.9;
+
+function percentile(sorted, fraction) {
+  if (sorted.length === 0) return null;
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * fraction)));
+  return sorted[index];
+}
+
+/**
  * Where the music actually begins.
  *
  * "The start of the track" is not reliably second zero: uploads open with
- * dead air, needle drop, or a few frames of encoder padding.
+ * dead air, needle drop, a cough, a few frames of encoder padding, or the
+ * crackle of a transfer running before the stylus reaches the groove.
  *
- * The threshold is measured against the file's own peak rather than against
- * a fixed dBFS floor. A 1928 transfer sits far below a modern master, and a
- * fixed floor reads its opening chorus as silence — which is exactly how an
- * earlier version of this put the start of West End Blues twelve seconds
- * into the cornet solo, and did it differently on each download.
+ * Silence detection alone cannot tell the last of those from the downbeat —
+ * a click is not silence, so the silence ends at the click and the round
+ * opens on a pop with the tune still a second away. So the opening is
+ * measured as a level envelope instead, and the start is the first moment
+ * loud enough to be music *and* still loud a second later. A crackle fails
+ * the second half of that; a horn does not.
+ *
+ * The threshold is measured against the recording's own levels rather than
+ * against a fixed dBFS floor. A 1928 transfer sits far below a modern
+ * master, and a fixed floor reads its opening chorus as silence — which is
+ * exactly how an earlier version of this put the start of West End Blues
+ * twelve seconds into the cornet solo, and did it differently on each
+ * download.
  */
 export async function detectAudibleStart(file) {
+  const frames = await levelEnvelope(file);
+  if (frames.length >= 20) {
+    const found = onsetFromEnvelope(frames);
+    if (found !== null) return found;
+  }
+  return detectAudibleStartBySilence(file);
+}
+
+function onsetFromEnvelope(frames) {
+  const sorted = frames.map((frame) => frame.db).sort((a, b) => a - b);
+  const floor = percentile(sorted, 0.1);
+  const loud = percentile(sorted, 0.9);
+  if (floor === null || loud === null) return null;
+
+  // Nothing to find: the recording is at one level the whole way through,
+  // which means it is playing from the first frame.
+  if (loud - floor < 6) return 0;
+
+  /*
+   * Twelve decibels over the background is comfortably above tape hiss,
+   * surface noise and room tone, and comfortably below anything anybody is
+   * playing. The clamps stop that from landing above the music itself on a
+   * noisy transfer, or so far under it on a digitally silent lead-in that
+   * the hiss counts as the band.
+   */
+  const threshold = Math.min(Math.max(floor + 12, loud - 40), loud - 6);
+
+  const sustain = Math.max(2, Math.round(SUSTAIN_SECONDS / FRAME_SECONDS));
+  // A held note dips below its own average; ask for most of the window, not
+  // all of it, or a marker lands one bar into the tune instead of on it.
+  const needed = Math.ceil(sustain * 0.7);
+
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i].db < threshold) continue;
+    const window = frames.slice(i, i + sustain);
+    if (window.length < Math.min(sustain, frames.length - i)) break;
+    const above = window.filter((frame) => frame.db >= threshold).length;
+    if (above < Math.min(needed, window.length)) continue;
+
+    // Back off a hair so the first attack is not shaved off — the frame is
+    // a tenth of a second wide and the attack is somewhere inside it.
+    return Number(Math.max(0, frames[i].at - FRAME_SECONDS).toFixed(3));
+  }
+
+  return null;
+}
+
+/**
+ * The older reading, kept as the fallback: find the silence the upload opens
+ * with and take the moment it ends. Cheaper, and right whenever the lead-in
+ * really is silent.
+ */
+async function detectAudibleStartBySilence(file) {
   try {
     const peak = await peakLevel(file);
     // 35 dB below the loudest moment is comfortably above tape hiss and
@@ -443,7 +572,6 @@ export async function detectAudibleStart(file) {
     const ends = /silence_end:\s*([\d.]+)/.exec(stderr ?? "");
     if (!ends) return 0;
 
-    // Back off a hair so the first attack is not shaved off.
     return Number(Math.max(0, Number(ends[1]) - 0.05).toFixed(3));
   } catch {
     return 0;

@@ -8,9 +8,19 @@
    key has been provided.
    ------------------------------------------------------------------ */
 
-/** Bracketed asides that describe the upload rather than the music. */
-const NOISE =
-  /\s*[([]\s*[^)\]]*(official|audio|video|hd|hq|4k|full album|remaster|remastered|edition|mono|stereo|lyrics|visualizer|topic|reissue|digitally|restored|colou?r|version|bonus|explicit|clean|album stream)[^)\]]*\s*[)\]]/gi;
+/**
+ * Bracketed asides.
+ *
+ * Every one of them goes, not only the ones naming a remaster or a codec:
+ * nothing a bracket has ever contained on YouTube is part of the name of a
+ * tune, and leaving a bracket in means "So What (Remastered 2011)" never
+ * matches the "So What" already in the library. Mirrors `cleanName` in
+ * lib/clean.ts, which is the same rule for everything downstream of here.
+ */
+const NOISE = /[([{][^)\]}]*[)\]}]/g;
+
+/** A bracket opened and never closed — the tail is an aside too. */
+const UNCLOSED = /[([{][^)\]}]*$/;
 
 /** Suffixes channels add to their own name. */
 const CHANNEL_NOISE = /\s*[-–—]?\s*(topic|vevo|official|music|records|jazz)\s*$/i;
@@ -18,10 +28,17 @@ const CHANNEL_NOISE = /\s*[-–—]?\s*(topic|vevo|official|music|records|jazz)\
 const SEPARATORS = /\s+[-–—|:]\s+/;
 
 function tidy(value) {
-  return String(value || "")
-    .replace(NOISE, "")
+  const raw = String(value || "");
+  const stripped = raw.replace(NOISE, " ").replace(UNCLOSED, " ");
+  // Stripping never empties a name: a video titled only "(Live)" keeps the
+  // words it had rather than becoming a blank field.
+  return edges(stripped) || edges(raw);
+}
+
+function edges(value) {
+  return value
     .replace(/\s{2,}/g, " ")
-    .replace(/^["'\s]+|["'\s.,-]+$/g, "")
+    .replace(/^["'\s\-–—·|:,;]+|["\s\-–—·|:,;]+$/g, "")
     .trim();
 }
 

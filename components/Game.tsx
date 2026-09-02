@@ -220,9 +220,18 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
    * Everyone the library has ever credited, plus the wider artist lexicon.
    * The people who play on these records are largely the people who lead
    * them, so no separate list of sidemen has to be kept anywhere.
+   *
+   * The named soloists go in alongside the credits. A soloist typed by hand
+   * on the marking screen need not appear in anybody's personnel list, and
+   * an answer the game will accept but never suggest is the one gap this
+   * pool must not have.
    */
   const soloistPool = useMemo(
-    () => buildPool(ARTISTS, solos.flatMap((s) => s.personnel.map((credit) => credit.name))),
+    () =>
+      buildPool(ARTISTS, [
+        ...solos.flatMap((s) => s.personnel.map((credit) => credit.name)),
+        ...solos.map((s) => s.soloist),
+      ]),
     [solos],
   );
   const pools: Record<Field, string[]> = {

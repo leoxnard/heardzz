@@ -87,6 +87,15 @@ Rounds currently open at the top of each recording. "The top" is not reliably
 second zero — uploads begin with dead air, needle drop, or encoder padding — so
 the cut point is found by onset detection rather than taken on trust.
 
+Silence detection alone is not enough for that, because a click is not silence.
+An upload whose lead-in carries a pop, a cough or the crackle of a transfer
+running before the stylus lands ends its silence at the noise, and the round
+opens on the noise with the tune still a second away. So the opening is read as
+a level envelope — one reading every tenth of a second — and the start is the
+first moment loud enough to be music *and* still loud a second later. A crackle
+fails the second half of that; a horn does not. The threshold is set from the
+recording's own levels, so a 1928 transfer is measured against 1928.
+
 Each entry also carries `soloAt`, the moment the solo enters, kept for the
 switch back:
 
@@ -131,8 +140,48 @@ date come back filled in:
    everyone who ever played on it.
 3. Everything found stays editable before you commit it.
 
-When the automatic match picks the wrong pressing, paste a **Discogs release or
-master link** and that release is used instead.
+Discogs is asked for the release, not for the upload's opinion of it: a YouTube
+tag names whichever pressing the uploader ripped, which is routinely a sampler
+or a reissue decades later, so a release billed to this artist and crediting one
+session overrules the tag on album and year. Candidates are scored rather than
+counted — the pressing with the longest credit list is often an anthology, and
+"Miles Davis, John Coltrane, Bill Evans" is a real Discogs billing and not the
+name Kind Of Blue came out under. A release billed to three artists at once, to
+Various Artists, or to somebody else entirely loses on that score and says so in
+the notes under the form.
+
+When the automatic match picks the wrong pressing anyway, paste a **Discogs
+release or master link** and that release is used instead.
+
+Names are stored with their brackets off. "So What (Remastered 2011)" and
+"So What (Official Audio) " are the same tune as "So What", and a library that
+keeps the brackets can never tell. Where the lexicon already spells a name, that
+spelling wins, so one tune is one row in the suggestion list rather than three.
+
+A record already in the library is refused, and the check runs while you type
+rather than once when the recording is fetched — correcting a mangled title is
+exactly the moment the answer changes. Both halves are folded first: brackets,
+takes and remaster notes come off the tune, and ensemble words and split
+billings come off the band, so "The Miles Davis Quintet — So What (Take 2)"
+finds the "So What" that is already there.
+
+### A playlist, or a whole playlist
+
+Paste a playlist link under **From the playlist** and it is listed without
+fetching any of it. Then either:
+
+- **Marked one at a time**, the default. You work through the queue, and the
+  next recording downloads in the background while you mark the one in front of
+  you — the download and the marking have no reason to happen in sequence, and
+  before this every record in a playlist began with the same wait.
+- **Fetched without you**, by ticking *Fetch them all without me*. Every record
+  gets its opening cut and its details looked up, and no solos are marked —
+  nobody can hear where one enters without listening. Everything lands
+  **unverified**, so a playlist of forty becomes forty clips to play through and
+  confirm, which is a much shorter job than typing into forty forms.
+
+Either way, records already in the library are left out, and skipping one throws
+its download away rather than leaving it on the disk.
 
 If the parse struggles with a title, set `GEMINI_API_KEY` and a model reads it
 instead. Entirely optional — nothing else needs a key, and the parser runs
@@ -244,6 +293,9 @@ lib/
   game.ts       round rules, stats, share grid
   audio.ts      Web Audio playback
   daily.ts      date to record, the practice order, repeat spacing
+  clean.ts      names with their brackets off
+  duplicates.ts whether two spellings are the same record
+  publish.ts    a marked-up recording to library entries
   lexicon/      ~280 artists and ~510 titles, plus matching
   i18n/         all interface copy
   auth.ts       the one password, and the signed session cookie

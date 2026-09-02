@@ -130,3 +130,22 @@ export function buildPool(base: string[], fromLibrary: string[]): string[] {
     a.localeCompare(b),
   );
 }
+
+/**
+ * The lexicon's spelling of a name, when the lexicon has one.
+ *
+ * A YouTube tag reads "Take the a Train" and the lexicon reads "Take the A
+ * Train". Both are the same tune and matching has never cared — but the
+ * suggestion list is built by merging the lexicon with the library, and two
+ * spellings of one title put two rows in it that a player has to choose
+ * between for no reason. So a name that is already known is stored the way
+ * it is known.
+ *
+ * Only spelling is settled here. A name the lexicon has never seen is
+ * returned untouched, which is most of what a growing library adds.
+ */
+export function canonical(value: string, pool: string[]): string {
+  const key = normalize(value);
+  if (!key) return value;
+  return pool.find((entry) => normalize(entry) === key) ?? value;
+}

@@ -103,23 +103,121 @@ export async function findReleaseByTrack(artist, song) {
   return results.slice(0, 4).map((r) => ({ id: r.id, title: r.title, year: r.year }));
 }
 
+/* ------------------------------------------------------------------
+   Picking the right pressing.
+
+   Discogs answers "Miles Davis / So What" with a dozen releases and only
+   some of them are the record. The rest are anthologies, all-star packages
+   and split billings — "Miles Davis, John Coltrane, Bill Evans" is a real
+   Discogs artist string and it is not what Kind Of Blue was released under.
+   Taking whichever pressing lists the most names walks straight into those,
+   because a package of four sessions credits four rhythm sections.
+
+   So candidates are scored rather than counted: the billing has to look
+   like the artist we already have, the credits have to look like one date,
+   and a fuller line-up breaks the tie rather than deciding it.
+   ------------------------------------------------------------------ */
+
+/** Discogs titles read "Artist - Album". The billing is the left half. */
+function billingOf(title) {
+  const text = String(title || "");
+  const cut = text.indexOf(" - ");
+  return cut === -1 ? "" : text.slice(0, cut);
+}
+
+function nameKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s*\(\d+\)\s*/g, " ")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(the|a|an|his|her|and|with|featuring|feat)\b/g, " ")
+    .replace(/\b(orchestra|big band|band|quintet|quartet|trio|duo|sextet|septet|octet|nonet|ensemble|group|combo|all ?stars?|jazz messengers)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
- * The fullest credit list among a few candidate pressings.
+ * How the release is billed against the artist we are looking for.
+ *
+ * "exact" is the record released under that name. "leading" is a split
+ * billing this artist heads — common and usually still the right session.
+ * "among" is a billing they are merely named in, which is what an all-star
+ * package looks like. "none" is a different act entirely.
+ */
+function billingMatch(title, artist) {
+  const wanted = nameKey(artist);
+  if (!wanted) return "unknown";
+
+  const billing = billingOf(title);
+  if (!billing) return "unknown";
+  if (/^various/i.test(billing)) return "various";
+
+  const parts = billing
+    .split(/\s*[,/]\s*|\s+&\s+|\s+\band\b\s+/i)
+    .map(nameKey)
+    .filter(Boolean);
+
+  if (parts.length === 0) return "unknown";
+  if (parts.length === 1 && parts[0] === wanted) return "exact";
+  // Three names on the marquee is a package, not a band, even when ours is
+  // the first of them: "Miles Davis, John Coltrane, Bill Evans" is how a
+  // label sells four sessions at once.
+  if (parts.length >= 3) return parts.includes(wanted) ? "package" : "none";
+  if (parts[0] === wanted) return "leading";
+  if (parts.includes(wanted)) return "among";
+  return nameKey(billing).includes(wanted) ? "leading" : "none";
+}
+
+export { billingMatch };
+
+const BILLING_SCORE = {
+  exact: 40,
+  leading: 18,
+  unknown: 0,
+  among: -20,
+  package: -35,
+  various: -45,
+  none: -30,
+};
+
+/**
+ * The best of a few candidate pressings, by score.
  *
  * The earliest pressing is the one closest to the original date, but it is
  * often also the one nobody typed the sleeve notes into. Walking a handful
- * and keeping the richest answer costs a few seconds and is the difference
- * between "Miles Davis" and the whole sextet.
+ * costs a few seconds and is the difference between "Miles Davis" and the
+ * whole sextet — as long as the walk cannot wander onto a compilation,
+ * which is what the billing and the compilation flag are for.
  */
-async function bestOf(candidates, song) {
+async function bestOf(candidates, song, artist) {
   let best = null;
-  for (const candidate of candidates.slice(0, 4)) {
+  let bestScore = -Infinity;
+
+  for (const [index, candidate] of candidates.slice(0, 4).entries()) {
     const { personnel, suspect } = await fetchPersonnel(candidate.id, song);
-    const found = { ...candidate, personnel, suspect };
-    if (!best || personnel.length > best.personnel.length) best = found;
-    // A rhythm section plus a horn: enough to stop looking.
-    if (!suspect && personnel.length >= 4) break;
+    const match = artist ? billingMatch(candidate.title, artist) : "unknown";
+
+    const score =
+      BILLING_SCORE[match]
+      // A fuller line-up is better, but only up to a sextet's worth: past
+      // that, more names is evidence of a compilation, not of better notes.
+      + Math.min(personnel.length, 8) * 3
+      + (suspect ? -30 : 0)
+      // Candidates arrive oldest first, and the oldest is the session.
+      - index * 3;
+
+    const found = { ...candidate, personnel, suspect, billing: match, artist: billingOf(candidate.title) };
+    if (score > bestScore) {
+      best = found;
+      bestScore = score;
+    }
+    // The record, credited, under its own name: nothing left to look for.
+    if (!suspect && match === "exact" && personnel.length >= 4) break;
   }
+
   return best;
 }
 
@@ -153,20 +251,36 @@ function collect(byName, credits) {
 }
 
 /**
- * Two core instruments credited to three or more people is the signature of a
- * compilation: the release lists everyone who played across years of sessions,
- * not the band on one date. Worth saying out loud rather than presenting as
- * the line-up.
+ * Chairs a band has one of.
+ *
+ * Counting every doubled instrument catches a big band rather than a
+ * compilation: Ellington's orchestra has five saxophones, four trumpets and
+ * three trombones on purpose, and reading that as an anthology threw away
+ * the credits of every large-ensemble record in the library. Sections are
+ * meant to be crowded; a rhythm section is not.
+ */
+const ONE_TO_A_BAND =
+  /^(piano|electric piano|rhodes|bass|double bass|acoustic bass|electric bass|bass guitar|drums|guitar|vibraphone|vibes|organ|banjo)$/;
+
+/**
+ * One rhythm chair credited to three or more people is the signature of a
+ * compilation: the release lists everyone who played across years of
+ * sessions, not the band on one date. Three, not two, because a single date
+ * really can carry two pianists — Kind Of Blue does.
+ *
+ * Worth saying out loud rather than presenting as the line-up.
  */
 function looksLikeCompilation(personnel) {
   const counts = new Map();
   for (const { role } of personnel) {
     for (const part of role.split(",").map((r) => r.trim().toLowerCase())) {
-      if (!part) continue;
+      if (!ONE_TO_A_BAND.test(part)) continue;
       counts.set(part, (counts.get(part) ?? 0) + 1);
     }
   }
-  return [...counts.values()].filter((n) => n >= 3).length > 0 || personnel.length > 12;
+  // Past twenty names it is a box set whatever the instruments say; a big
+  // band tops out around seventeen.
+  return [...counts.values()].some((n) => n >= 3) || personnel.length > 20;
 }
 
 export async function fetchPersonnel(releaseId, songTitle) {
@@ -219,6 +333,7 @@ export async function lookupPersonnel(artist, album, songTitle) {
   const best = await bestOf(
     candidates.map((r) => ({ id: r.id, title: r.title, year: r.year })),
     songTitle,
+    artist,
   );
   if (!best) return { personnel: [], release: null, suspect: false };
 
@@ -234,7 +349,7 @@ export async function lookupPersonnel(artist, album, songTitle) {
 export async function lookupByTrack(artist, song) {
   const candidates = await findReleaseByTrack(artist, song);
   if (candidates.length === 0) return null;
-  return bestOf(candidates, song);
+  return bestOf(candidates, song, artist);
 }
 
 /** Everything Discogs can say about one release the user pointed at. */
@@ -248,12 +363,18 @@ export async function lookupByRelease(reference, song) {
   const release = await call(`/releases/${target.id}`);
   const { personnel, suspect } = await fetchPersonnel(target.id, song);
 
+  const billed = (release.artists || []).map((a) => cleanName(a.name)).join(", ");
+
   return {
     id: target.id,
     title: release.title,
     year: Number(release.year) || Number(target.year) || 0,
-    artist: (release.artists || []).map((a) => cleanName(a.name)).join(", "),
+    artist: billed,
     personnel,
     suspect,
+    // A link pasted by hand is a decision, not a guess — but the screen
+    // still says how it is billed, because that is what goes wrong.
+    billing: billingMatch(release.title, billed),
+    billedAs: billed,
   };
 }

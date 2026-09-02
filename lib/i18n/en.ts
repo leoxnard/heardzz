@@ -254,6 +254,26 @@ export const en = {
     playlistLoading: "Reading the playlist",
     playlistKnown: "{n} left out, already in the library",
     playlistAllKnown: "Every record in that playlist is already in the library.",
+    playlistAuto: "Fetch them all without me",
+    playlistAutoHelp:
+      "Cuts the opening of every record and looks the details up, but marks no solos — nobody can hear where one enters without listening. Everything lands unverified, so you play the clips through afterwards and confirm them.",
+    playlistFetchAll: "Fetch the playlist",
+    autoTitle: "Fetching the playlist",
+    autoHelp:
+      "One at a time, so the count is real. Leave this open — it stops if you navigate away. Everything that lands is unverified and waiting in the list on the left.",
+    autoProgress: "{done} of {n}",
+    autoStop: "Stop after this one",
+    autoDone: "Close",
+    autoDuplicate: "Already in the library",
+    autoFinished: "{n} added, all unverified. Play them through and confirm the ones that start in the right place.",
+    auto: {
+      waiting: "waiting",
+      working: "fetching",
+      added: "added",
+      duplicate: "already here",
+      skipped: "skipped",
+      failed: "failed",
+    },
   },
 
   login: {

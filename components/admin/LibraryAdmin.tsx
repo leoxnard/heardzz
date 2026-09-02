@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LibraryList } from "./LibraryList";
@@ -10,6 +10,7 @@ import { SourceWorkbench } from "./SourceWorkbench";
 import { SuggestionReview } from "./SuggestionReview";
 import { t } from "@/lib/i18n";
 import type { Report, Solo, Suggestion } from "@/lib/types";
+import type { SourceResult } from "@/app/api/admin/source/route";
 
 /* ------------------------------------------------------------------
    The library screen.
@@ -28,11 +29,21 @@ interface PlaylistEntry {
   uploader: string;
 }
 
+/** How one entry of an automatically fetched playlist ended up. */
+interface AutoResult {
+  youtubeId: string;
+  title: string;
+  status: "waiting" | "working" | "added" | "duplicate" | "skipped" | "failed";
+  detail?: string;
+}
+
 type Job =
   /** A link, pasted by hand. */
   | { kind: "single" }
   /** A playlist, one record at a time. */
   | { kind: "queue"; entries: PlaylistEntry[]; index: number; known: number }
+  /** A playlist being fetched without anybody marking it up. */
+  | { kind: "auto"; entries: PlaylistEntry[]; known: number }
   /** Somebody's suggestion, marked up before it is accepted. */
   | { kind: "suggestion"; suggestion: Suggestion }
   /** A record already in the library, being marked again. */
@@ -62,6 +73,24 @@ export function LibraryAdmin({
   const [playlistTarget, setPlaylistTarget] = useState("");
   const [playlistBusy, setPlaylistBusy] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
+  /** Ticked: fetch the whole playlist unattended and verify it afterwards. */
+  const [playlistAuto, setPlaylistAuto] = useState(false);
+
+  const [autoResults, setAutoResults] = useState<AutoResult[]>([]);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const autoStopped = useRef(false);
+
+  /*
+   * Recordings fetched ahead of their turn.
+   *
+   * The queue used to download the next tune only once the previous one was
+   * saved, so every record in a playlist began with the same wait. There is
+   * nothing to wait for: the marking of one record and the download of the
+   * next have no reason to happen in sequence.
+   */
+  const [preloaded, setPreloaded] = useState<Record<string, SourceResult>>({});
+  const preloading = useRef<Set<string>>(new Set());
+  const [preloadingIds, setPreloadingIds] = useState<string[]>([]);
 
   const unverified = solos.filter((solo) => !solo.verified).length;
   const waiting = suggestions.filter((s) => s.status === "pending").length;
@@ -116,6 +145,8 @@ export function LibraryAdmin({
   async function loadPlaylist() {
     setPlaylistBusy(true);
     setPlaylistError(null);
+    setPreloaded({});
+    discarded.current = new Set();
     try {
       const response = await fetch("/api/admin/playlist", {
         method: "POST",
@@ -128,8 +159,14 @@ export function LibraryAdmin({
       if (entries.length === 0) {
         throw new Error(t("mark.playlistAllKnown", { n: data.known ?? 0 }));
       }
-      setJob({ kind: "queue", entries, index: 0, known: data.known ?? 0 });
-      setPlaylistTarget("");
+      if (playlistAuto) {
+        setJob({ kind: "auto", entries, known: data.known ?? 0 });
+        setPlaylistTarget("");
+        void runAuto(entries);
+      } else {
+        setJob({ kind: "queue", entries, index: 0, known: data.known ?? 0 });
+        setPlaylistTarget("");
+      }
     } catch (cause) {
       setPlaylistError(cause instanceof Error ? cause.message : "Could not read that playlist");
     } finally {
@@ -153,6 +190,153 @@ export function LibraryAdmin({
     });
   }
 
+  /**
+   * Skip this one and throw its download away.
+   *
+   * Saving drops the recording and so does discarding; skipping used to
+   * leave it, which was a hundred megabytes a press. It matters more now
+   * that the next record is fetched ahead of its turn — a run through a
+   * playlist otherwise fills the disk with tunes nobody kept.
+   */
+  function skipCurrent(youtubeId: string) {
+    discarded.current.add(youtubeId);
+    void fetch(`/api/admin/source?id=${encodeURIComponent(youtubeId)}`, { method: "DELETE" })
+      .catch(() => {});
+    advanceQueue();
+  }
+
+  /*
+   * Fetch the next record in the queue while this one is being marked.
+   *
+   * The download is the slow half of adding a record and the marking is the
+   * half that needs a person, so they are run against each other: by the
+   * time one record is saved the next is already on disk and its screen
+   * opens on the waveform rather than on "Fetching".
+   *
+   * One at a time. Two downloads and a Discogs lookup at once is how the
+   * Discogs throttle turns into everyone waiting.
+   */
+  useEffect(() => {
+    if (job?.kind !== "queue") return;
+    const next = job.entries[job.index + 1];
+    if (!next) return;
+    if (preloaded[next.youtubeId] || preloading.current.has(next.youtubeId)) return;
+    if (preloading.current.size > 0) return;
+
+    preloading.current.add(next.youtubeId);
+    setPreloadingIds([...preloading.current]);
+
+    let dropped = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/admin/source", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ youtubeId: next.youtubeId }),
+        });
+        const data = await response.json();
+        // A failure here is not worth reporting: the record's own screen
+        // will fetch it again when its turn comes, and say so then.
+        if (response.ok && !dropped) {
+          setPreloaded((current) => ({ ...current, [next.youtubeId]: data as SourceResult }));
+        }
+      } catch {
+        /* same */
+      } finally {
+        preloading.current.delete(next.youtubeId);
+        setPreloadingIds([...preloading.current]);
+      }
+    })();
+
+    return () => {
+      dropped = true;
+    };
+  }, [job, preloaded]);
+
+  /*
+   * Fetched but never used — a queue abandoned halfway, or a record skipped
+   * after its download had already finished. Whole recordings are big and
+   * the sources directory is not storage, so they go when the queue does.
+   *
+   * Which ids have been thrown away is a ref rather than state: nothing on
+   * the screen depends on it, and the map itself is emptied when the next
+   * playlist is listed.
+   */
+  const discarded = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (job?.kind === "queue") return;
+    for (const id of Object.keys(preloaded)) {
+      if (discarded.current.has(id)) continue;
+      discarded.current.add(id);
+      void fetch(`/api/admin/source?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+        .catch(() => {});
+    }
+  }, [job, preloaded]);
+
+  /*
+   * Work through a playlist without stopping at each record.
+   *
+   * Every entry gets its opening cut and nothing else — no solo is marked,
+   * because marking one means hearing it — and lands unverified. What comes
+   * out is a list to listen through, not a list to type into, which is a
+   * different and much shorter job.
+   */
+  async function runAuto(entries: PlaylistEntry[]) {
+    autoStopped.current = false;
+    setAutoRunning(true);
+    setAutoResults(
+      entries.map((entry) => ({
+        youtubeId: entry.youtubeId,
+        title: entry.title,
+        status: "waiting" as const,
+      })),
+    );
+
+    const mark = (youtubeId: string, patch: Partial<AutoResult>) =>
+      setAutoResults((current) =>
+        current.map((row) => (row.youtubeId === youtubeId ? { ...row, ...patch } : row)),
+      );
+
+    for (const entry of entries) {
+      if (autoStopped.current) break;
+      mark(entry.youtubeId, { status: "working" });
+
+      try {
+        const response = await fetch("/api/admin/playlist/auto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ youtubeId: entry.youtubeId }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          mark(entry.youtubeId, { status: "failed", detail: data.error ?? "Could not add it" });
+          continue;
+        }
+
+        if (data.status === "added") {
+          absorb([data.solo as Solo], []);
+          mark(entry.youtubeId, {
+            status: "added",
+            detail: `${data.artist} — ${data.song}`,
+          });
+        } else if (data.status === "duplicate") {
+          mark(entry.youtubeId, { status: "duplicate", detail: t("mark.autoDuplicate") });
+        } else {
+          mark(entry.youtubeId, { status: "skipped", detail: data.reason });
+        }
+      } catch (cause) {
+        mark(entry.youtubeId, {
+          status: "failed",
+          detail: cause instanceof Error ? cause.message : "Could not add it",
+        });
+      }
+    }
+
+    setAutoRunning(false);
+    router.refresh();
+  }
+
   function workbench() {
     if (!job) return null;
 
@@ -171,7 +355,7 @@ export function LibraryAdmin({
             )}
             <button
               type="button"
-              onClick={advanceQueue}
+              onClick={() => skipCurrent(entry.youtubeId)}
               className="type-eyebrow ml-auto text-paper-faint transition-colors hover:text-flame"
             >
               {t("mark.skip")}
@@ -180,6 +364,9 @@ export function LibraryAdmin({
           <SourceWorkbench
             key={entry.youtubeId}
             seed={{ youtubeId: entry.youtubeId, autoFetch: true }}
+            preloaded={preloaded[entry.youtubeId] ?? null}
+            preloading={preloadingIds.includes(entry.youtubeId)}
+            library={solos}
             queueNote={t("mark.queue", { n: remaining })}
             saveLabel={remaining > 0 ? t("mark.saveAndNext") : t("mark.save")}
             onSaved={(written, removed) => {
@@ -189,6 +376,75 @@ export function LibraryAdmin({
             onOpenExisting={openExisting}
             onCancel={advanceQueue}
           />
+        </div>
+      );
+    }
+
+    if (job.kind === "auto") {
+      const done = autoResults.filter((row) => row.status !== "waiting" && row.status !== "working");
+      const added = autoResults.filter((row) => row.status === "added").length;
+      return (
+        <div className="max-w-3xl">
+          <div className="flex flex-wrap items-baseline gap-x-4 border-b border-ink-edge pb-4">
+            <h3 className="type-eyebrow text-flame">{t("mark.autoTitle")}</h3>
+            <span className="type-data text-xs text-paper-faint">
+              {t("mark.autoProgress", { done: done.length, n: autoResults.length })}
+            </span>
+            {autoRunning ? (
+              <button
+                type="button"
+                onClick={() => {
+                  autoStopped.current = true;
+                }}
+                className="type-eyebrow ml-auto text-paper-faint transition-colors hover:text-flame"
+              >
+                {t("mark.autoStop")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setJob(null)}
+                className="type-eyebrow ml-auto text-paper-faint transition-colors hover:text-flame"
+              >
+                {t("mark.autoDone")}
+              </button>
+            )}
+          </div>
+
+          <p className="type-body mt-4 text-xs leading-relaxed text-paper-faint">
+            {t("mark.autoHelp")}
+          </p>
+
+          <ul className="mt-6 divide-y divide-ink-edge border-y border-ink-edge">
+            {autoResults.map((row) => (
+              <li key={row.youtubeId} className="flex flex-wrap items-baseline gap-x-3 px-1 py-3">
+                <span
+                  className={`block h-2 w-2 shrink-0 rounded-full ${
+                    row.status === "added"
+                      ? "bg-flame"
+                      : row.status === "working"
+                        ? "bg-paper animate-pulse"
+                        : row.status === "failed"
+                          ? "bg-flame-deep"
+                          : "bg-ink-edge"
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="type-body min-w-0 flex-1 truncate text-sm text-paper">
+                  {row.detail ?? row.title}
+                </span>
+                <span className="type-eyebrow text-xs text-paper-faint">
+                  {t(`mark.auto.${row.status}`)}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {!autoRunning && added > 0 && (
+            <p className="type-body mt-5 text-sm text-paper-dim">
+              {t("mark.autoFinished", { n: added })}
+            </p>
+          )}
         </div>
       );
     }
@@ -209,6 +465,7 @@ export function LibraryAdmin({
             discogsReleaseId: suggestion.discogsReleaseId,
             autoFetch: true,
           }}
+          library={solos}
           onSaved={async (written, removed) => {
             absorb(written, removed);
             // The clips exist already; this only settles the suggestion.
@@ -263,6 +520,7 @@ export function LibraryAdmin({
     return (
       <div>
         <SourceWorkbench
+          library={solos}
           onSaved={(written, removed) => {
             absorb(written, removed);
             setSelectedId(written[0]?.id ?? null);
@@ -291,9 +549,31 @@ export function LibraryAdmin({
               disabled={playlistBusy || !playlistTarget.trim()}
               className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
             >
-              {playlistBusy ? t("mark.playlistLoading") : t("mark.playlistLoad")}
+              {playlistBusy
+                ? t("mark.playlistLoading")
+                : playlistAuto
+                  ? t("mark.playlistFetchAll")
+                  : t("mark.playlistLoad")}
             </button>
           </div>
+
+          {/* Two ways to spend a playlist: an evening marking every solo, or
+              a run of openings to listen through afterwards. */}
+          <label className="mt-4 flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={playlistAuto}
+              onChange={(event) => setPlaylistAuto(event.target.checked)}
+              className="mt-[3px] h-4 w-4 shrink-0 accent-flame"
+            />
+            <span>
+              <span className="type-eyebrow block text-paper">{t("mark.playlistAuto")}</span>
+              <span className="type-body mt-1 block text-xs leading-relaxed text-paper-faint">
+                {t("mark.playlistAutoHelp")}
+              </span>
+            </span>
+          </label>
+
           {playlistError && <p className="type-body mt-3 text-sm text-flame">{playlistError}</p>}
         </div>
       </div>
