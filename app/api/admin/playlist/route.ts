@@ -6,8 +6,13 @@ import { findDuplicates, loadSolos } from "@/lib/library";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-/** Enough for an album side and a half; nobody marks up more in one sitting. */
-const LIMIT = 30;
+/**
+ * A ceiling, not a target. `--flat-playlist` costs one request whatever the
+ * count, so there is no reason to stop at an evening's worth — the reason to
+ * stop at all is that a playlist is technically unbounded and this is a
+ * marking queue, not an archive importer.
+ */
+const LIMIT = 300;
 
 /**
  * List a playlist without fetching any of it.
@@ -38,7 +43,13 @@ export async function POST(request: Request) {
       (entry) => findDuplicates(solos, { youtubeId: entry.youtubeId }).length === 0,
     );
 
-    return NextResponse.json({ entries, known: all.length - entries.length });
+    return NextResponse.json({
+      entries,
+      known: all.length - entries.length,
+      // Asking for LIMIT and getting exactly LIMIT back means there was
+      // more to read; --playlist-end has no way to say so directly.
+      truncated: all.length === LIMIT,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not read that playlist" },

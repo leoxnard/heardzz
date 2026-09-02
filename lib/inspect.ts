@@ -1,6 +1,8 @@
 import { lookupByRelease, lookupByTrack, type Billing } from "@/scripts/discogs.mjs";
 import { askGemini, geminiAvailable, parseTitle } from "@/scripts/metadata.mjs";
 import { cleanName } from "./clean";
+import { artistKey, songKey } from "./duplicates";
+import { ARTISTS, SONGS } from "./lexicon";
 import type { Credit } from "./types";
 
 /* ------------------------------------------------------------------
@@ -59,6 +61,10 @@ const BILLING_NOTE: Partial<Record<Billing, string>> = {
   none: "That release is not billed to this artist at all. Paste a Discogs release if the band looks wrong.",
 };
 
+/** Folded once at module load; every record checked against the same sets. */
+const KNOWN_ARTIST_KEYS = new Set(ARTISTS.map(artistKey));
+const KNOWN_SONG_KEYS = new Set(SONGS.map(songKey));
+
 export async function inspectSource(
   source: ResolvedSource,
   discogs?: string,
@@ -98,6 +104,32 @@ export async function inspectSource(
         "The video title had no artist in it, so the channel name was used. " +
           "Set GEMINI_API_KEY to have a model read these instead.",
       );
+    }
+  }
+
+  /*
+   * Some uploaders write "Title - Artist" instead of "Artist - Title", and a
+   * parser that always takes the second half as the tune gets those
+   * backwards: "So What - Miles Davis" comes back with the tune in the
+   * artist field, which is a record no duplicate check ever finds, because
+   * the record it actually names is filed correctly.
+   *
+   * Caught against the two lexicons rather than guessed at: a swap is only
+   * made when the artist field is a known tune, the artist field is *not* a
+   * known artist, and the song field *is* a known artist — so a genuine
+   * "Artist - Title" pair that merely shares a word with something else is
+   * left alone. Folded through the same artistKey/songKey duplicate
+   * matching uses, so "The Miles Davis Quintet" is recognised as "Miles
+   * Davis" here exactly as it would be when checking for a duplicate.
+   */
+  if (artist && song) {
+    const artistIsKnownSong = KNOWN_SONG_KEYS.has(songKey(artist));
+    const artistIsKnownArtist = KNOWN_ARTIST_KEYS.has(artistKey(artist));
+    const songIsKnownArtist = KNOWN_ARTIST_KEYS.has(artistKey(song));
+
+    if (artistIsKnownSong && !artistIsKnownArtist && songIsKnownArtist) {
+      [artist, song] = [song, artist];
+      notes.push("The title looked like it named the tune before the artist, so the two were swapped.");
     }
   }
 

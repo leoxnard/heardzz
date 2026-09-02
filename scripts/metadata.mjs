@@ -25,11 +25,28 @@ const UNCLOSED = /[([{][^)\]}]*$/;
 /** Suffixes channels add to their own name. */
 const CHANNEL_NOISE = /\s*[-–—]?\s*(topic|vevo|official|music|records|jazz)\s*$/i;
 
+/**
+ * The same asides as NOISE, minus the brackets some uploaders forget to
+ * type. "So What HQ", "Naima Full Album", "My Favorite Things Official
+ * Audio" all trail one of these with nothing around it, and a title that
+ * ends in one loses it the same way it would lose "(HQ)" — anchored to the
+ * end, so a tune that is genuinely one of these words is never touched.
+ */
+const TRAILING_NOISE =
+  /\s+(HQ|HD|4K|8K|SD|remaster(?:ed)?(?:\s*\d{4})?|official(?:\s*(?:audio|video))?|full\s*album|album\s*version|audio|video|lyrics|visualizer)\s*$/i;
+
 const SEPARATORS = /\s+[-–—|:]\s+/;
 
 function tidy(value) {
   const raw = String(value || "");
-  const stripped = raw.replace(NOISE, " ").replace(UNCLOSED, " ");
+  let stripped = raw.replace(NOISE, " ").replace(UNCLOSED, " ");
+  // Applied until nothing more matches: "Naima HQ Audio" sheds one tag at a
+  // time, "Audio" first and then "HQ".
+  let prior;
+  do {
+    prior = stripped;
+    stripped = stripped.replace(TRAILING_NOISE, "");
+  } while (stripped !== prior);
   // Stripping never empties a name: a video titled only "(Live)" keeps the
   // words it had rather than becoming a blank field.
   return edges(stripped) || edges(raw);

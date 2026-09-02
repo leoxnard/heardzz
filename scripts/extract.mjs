@@ -92,23 +92,59 @@ export async function checkTools() {
 }
 
 /**
+ * The part of a failed yt-dlp call worth a person's time.
+ *
+ * `run()` rejects with the whole invocation in `error.message` — the binary,
+ * every flag, the full stderr — because that is right for a script's own
+ * failure output. It is wrong for a playlist import, where the message lands
+ * verbatim next to a record's title and a hundred-character command line
+ * says nothing a status word does not say better. The common cases are named
+ * outright; anything else falls back to yt-dlp's own ERROR line, stripped of
+ * the "[youtube] <id>:" prefix it always carries.
+ */
+function friendlyYtdlpFailure(target, error) {
+  const stderr = String(error?.stderr || error?.message || "");
+  if (/private video/i.test(stderr)) return "That video is private.";
+  if (/video unavailable/i.test(stderr)) return "That video is no longer available.";
+  if (/removed by the (?:uploader|user)/i.test(stderr)) return "That video was taken down by whoever uploaded it.";
+  if (/copyright/i.test(stderr)) return "That video was taken down over a copyright claim.";
+  if (/not available in your country|blocked it in your country/i.test(stderr)) {
+    return "That video is blocked in this region.";
+  }
+  if (/sign in to confirm your age|age.restrict/i.test(stderr)) return "That video is age-restricted.";
+
+  const line = stderr.split("\n").find((entry) => /^error:/i.test(entry.trim()));
+  const reason = line
+    ?.replace(/^error:\s*/i, "")
+    .replace(/^\[[^\]]+\]\s*[\w-]{6,}:\s*/i, "")
+    .trim();
+  return reason || `Could not read "${target}"`;
+}
+
+/**
  * Resolve a search phrase or URL to a single video without downloading.
  * Doing this first means a bad match is caught before any bytes move.
  */
 export async function resolveSource(target) {
   const query = /^https?:\/\//.test(target) ? target : `ytsearch1:${target}`;
-  const { stdout } = await run(
-    "yt-dlp",
-    [
-      "--no-playlist",
-      "--skip-download",
-      "--no-warnings",
-      "--print",
-      "%(id)s\t%(title)s\t%(duration)s\t%(uploader)s\t%(artist)s\t%(track)s\t%(album)s\t%(release_year)s",
-      query,
-    ],
-    { maxBuffer: 1024 * 1024 * 8 },
-  );
+
+  let stdout;
+  try {
+    ({ stdout } = await run(
+      "yt-dlp",
+      [
+        "--no-playlist",
+        "--skip-download",
+        "--no-warnings",
+        "--print",
+        "%(id)s\t%(title)s\t%(duration)s\t%(uploader)s\t%(artist)s\t%(track)s\t%(album)s\t%(release_year)s",
+        query,
+      ],
+      { maxBuffer: 1024 * 1024 * 8 },
+    ));
+  } catch (error) {
+    throw new Error(friendlyYtdlpFailure(target, error));
+  }
 
   const [id, title, duration, uploader, artist, track, album, year] = stdout
     .trim()
