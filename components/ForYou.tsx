@@ -422,17 +422,18 @@ export function ForYou() {
         </button>
       </div>
 
-      <p className="type-eyebrow mt-10 text-paper-faint">Or say who</p>
+      <p className="type-eyebrow mt-10 text-paper-faint">Or say who, or what</p>
       <p className="type-body mt-2 text-sm leading-relaxed text-paper-faint">
-        No playlist? Name whoever you want to hear and a model reads the
-        names out of it — the round is built from those, the same way.
+        No playlist? Name whoever you want to hear, or just describe it —
+        a genre, an era, a mood — and a model reads artists out of it. The
+        round is built from those, the same way.
       </p>
       <div className="mt-4 flex flex-wrap gap-3">
         <input
           type="text"
           value={words}
           onChange={(event) => setWords(event.target.value)}
-          placeholder="Michael Brecker only"
+          placeholder="Michael Brecker only, or hard bop"
           disabled={busy}
           className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-4 py-3 text-sm text-paper focus:border-flame focus:outline-none disabled:opacity-50"
         />

@@ -25,24 +25,30 @@ export const maxDuration = 60;
 const READS = 8;
 const READ_WINDOW_MS = 60 * 60 * 1000;
 
-/** Nobody is naming a tenth favourite artist in one line. */
-const MAX_ARTISTS = 6;
+/** Enough names to widen out from without asking the model to name every act in a genre. */
+const MAX_ARTISTS = 8;
 
 const taste = z.object({
   artists: z
     .array(z.string())
     .max(MAX_ARTISTS)
-    .describe("Musician or band names the listener named, exactly as they wrote them."),
+    .describe(
+      "Musician or band names to build the taste from — either named directly by the " +
+        "listener, or, when they described a genre/style/era/mood instead, several artists " +
+        "well known for it.",
+    ),
 });
 
 /**
- * Read the artist names out of a few words of taste.
+ * Read a list of artists out of a few words of taste — named directly, or
+ * stood in for when the words describe a style rather than an act.
  *
- * Deliberately narrow: a mood, a genre or an instrument on its own is not
- * something the rest of this pipeline can act on, since everything past
- * this point only knows how to widen out from an artist id. So the model is
- * asked for names and nothing else, and "no names" comes back as an empty
- * list rather than a guess.
+ * Everything past this point only knows how to widen out from an artist id
+ * (`tasteFromArtistIds`), and TIDAL has no notion of "genre" this app can
+ * ask it for (`lib/tidal.ts`) — so "hard bop" has to become a handful of
+ * hard bop musicians before it can go anywhere. The model is trusted for
+ * that translation and nothing past it: what comes back is still just
+ * names, resolved the same way a typed one would be.
  */
 async function namesFrom(text: string): Promise<string[]> {
   const { output } = await generateText({
@@ -51,9 +57,11 @@ async function namesFrom(text: string): Promise<string[]> {
     prompt:
       "A listener typed the following to describe the jazz they want to hear:\n\n" +
       `"${text}"\n\n` +
-      "List the specific musicians or bands they named. Do not include genres, " +
-      "moods, instruments, decades, or anything that is not an act's own name. " +
-      "If they named nobody in particular, return an empty list.",
+      "If they named specific musicians or bands, list those. If instead they described " +
+      "a genre, style, era, mood or instrument (e.g. \"hard bop\", \"something moody\", " +
+      `\"60s Blue Note\", \"tenor sax\"), list ${MAX_ARTISTS} artists strongly representative ` +
+      "of that description instead — real, well-known acts, not a guess at an obscure one. " +
+      "If the text names nobody and describes nothing musical, return an empty list.",
   });
   return output.artists.map((name) => name.trim()).filter(Boolean).slice(0, MAX_ARTISTS);
 }
@@ -95,7 +103,7 @@ export async function POST(request: Request) {
     const names = await namesFrom(text);
     if (names.length === 0) {
       return NextResponse.json(
-        { error: "Name an artist or two and try again." },
+        { error: "Name an artist, a band, or a style, and try again." },
         { status: 400 },
       );
     }
@@ -103,7 +111,7 @@ export async function POST(request: Request) {
     const resolved = await resolveArtistNames(names);
     if (resolved.length === 0) {
       return NextResponse.json(
-        { error: "TIDAL doesn't have anyone by that name." },
+        { error: "TIDAL doesn't have anyone that came out of that." },
         { status: 400 },
       );
     }
