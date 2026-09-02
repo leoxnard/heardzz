@@ -78,12 +78,25 @@ export async function resolveArtistName(name: string): Promise<ResolvedArtist | 
  * second from an unauthenticated client (`lib/musicbrainz.ts`), and a batch
  * of names run in parallel would each be queuing behind the same limiter
  * anyway — running them one after another is no slower and reads plainly.
+ *
+ * `want` stops the walk early, once that many names have been placed. It
+ * matters for a list nobody typed: a taste read off Last.fm arrives long
+ * and in playcount order, and the names at the far end of it are there to
+ * be fallen back on, not to be waited for. A name that misses is the slow
+ * case — a MusicBrainz search and up to five ISRC lookups before it gives
+ * up — so walking a long list to the end when the first few already
+ * answered is the one way this gets genuinely slow. Left off, the whole
+ * list is walked, which is what a handful of typed names wants.
  */
-export async function resolveArtistNames(names: string[]): Promise<ResolvedArtist[]> {
+export async function resolveArtistNames(
+  names: string[],
+  want = Infinity,
+): Promise<ResolvedArtist[]> {
   const resolved: ResolvedArtist[] = [];
   const seen = new Set<string>();
 
   for (const name of names) {
+    if (resolved.length >= want) break;
     const found = await resolveArtistName(name);
     if (!found || seen.has(found.id)) continue;
     seen.add(found.id);

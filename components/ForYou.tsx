@@ -44,6 +44,7 @@ interface StoredSession {
 export function ForYou() {
   const [target, setTarget] = useState("");
   const [words, setWords] = useState("");
+  const [listener, setListener] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [solos, setSolos] = useState<Solo[]>([]);
@@ -291,6 +292,25 @@ export function ForYou() {
   }
 
   /**
+   * Same sitting again, built from what somebody has actually listened to.
+   * Like the words door, this one resolves to artist ids server-side, so
+   * there is no link to replan from and the response carries its own
+   * `target`.
+   */
+  function startFromLastfm() {
+    const trimmed = listener.trim();
+    void beginSession(
+      () =>
+        fetch("/api/foryou/lastfm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: trimmed }),
+        }),
+      "",
+    );
+  }
+
+  /**
    * Leave this sitting for another one, entirely — not just a new round
    * within it. The running count is zeroed the way `start` zeroes it for a
    * fresh sitting, since the pool it was counting into no longer exists.
@@ -312,6 +332,7 @@ export function ForYou() {
 
     setTarget("");
     setWords("");
+    setListener("");
     setSource("");
     setReached([]);
     setSolos([]);
@@ -419,6 +440,38 @@ export function ForYou() {
           type="button"
           onClick={startFromWords}
           disabled={busy || !words.trim()}
+          className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+        >
+          {phase === "planning"
+            ? "Reading your taste"
+            : phase === "fetching"
+              ? `Fetching (${ready} ready)`
+              : "Build me a round"}
+        </button>
+      </div>
+
+      <p className="type-eyebrow mt-10 text-paper-faint">Or from Last.fm</p>
+      <p className="type-body mt-2 text-sm leading-relaxed text-paper-faint">
+        Your username is enough — it reads the artists you have played most
+        and builds the round out from those. Nothing to log in to, and it
+        only ever reads.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <input
+          type="text"
+          value={listener}
+          onChange={(event) => setListener(event.target.value)}
+          placeholder="your last.fm username"
+          disabled={busy}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-4 py-3 text-sm text-paper focus:border-flame focus:outline-none disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={startFromLastfm}
+          disabled={busy || !listener.trim()}
           className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
         >
           {phase === "planning"
