@@ -620,7 +620,10 @@ function onsetFromEnvelope(frames) {
 
     // Back off a hair so the first attack is not shaved off — the frame is
     // a tenth of a second wide and the attack is somewhere inside it.
-    return Number(Math.max(0, frames[i].at - FRAME_SECONDS).toFixed(3));
+    const at = Math.max(0, frames[i].at - FRAME_SECONDS);
+    // Too far in to be the opening of anything: let the caller fall back.
+    if (at > LATEST_OPENING) return null;
+    return Number(at.toFixed(3));
   }
 
   return null;
@@ -646,7 +649,80 @@ function onsetFromEnvelope(frames) {
  * which is the honest answer for most things that are not a 1959 session.
  */
 export async function detectFirstSound(file) {
+  const frames = await levelEnvelope(file);
+  if (frames.length >= 20) {
+    const found = onsetFromFadeIn(frames);
+    if (found !== null) return found;
+  }
   return detectAudibleStartBySilence(file);
+}
+
+/**
+ * How far under the loud part of a record still counts as the record.
+ *
+ * The two detectors either side of this one both got it wrong, in opposite
+ * directions. `detectAudibleStart` asks for within 6 dB of the loud level,
+ * which on a compressed master means the drop — twenty seconds in.
+ * Silence detection asks only for something above the noise floor, which on
+ * a fade-in means the very bottom of the fade: an Insomnia round opened at
+ * -60 dB and took three seconds to reach anything a person could hear,
+ * which is most of a round spent listening to nothing.
+ *
+ * Eighteen decibels is the room between them. Quiet playing clears it; a
+ * fade still climbing towards the tune does not.
+ */
+const FADE_IN_RANGE = 24;
+
+/**
+ * How far into a record this is willing to open at all.
+ *
+ * A relative threshold can still be defeated — a record whose opening is
+ * genuinely far quieter than the rest of it will not clear any sensible
+ * bar until the tune proper arrives, and an earlier attempt at this opened
+ * Insomnia thirty-five seconds in. Past this point the answer is not "the
+ * music starts here", it is "this detector has failed", and trimming the
+ * digital silence off the front is the more honest of the two.
+ */
+const LATEST_OPENING = 8;
+
+/**
+ * Where a record becomes audible, as opposed to where it becomes loud.
+ *
+ * Half a second of sustain rather than the nine tenths `onsetFromEnvelope`
+ * asks for: this is looking for the point a fade has arrived at, not for an
+ * entry that has to be held, and a longer window only pushes the marker
+ * further into a tune that already started.
+ */
+function onsetFromFadeIn(frames) {
+  const sorted = frames.map((frame) => frame.db).sort((a, b) => a - b);
+  const floor = percentile(sorted, 0.1);
+  const loud = percentile(sorted, 0.9);
+  if (floor === null || loud === null) return null;
+
+  // One level throughout means it is playing from the first frame.
+  if (loud - floor < 6) return 0;
+
+  /*
+   * Relative to the loud part only. Anchoring to the noise floor as well
+   * reads as prudent and does nothing here: a compressed master has a
+   * floor within a few decibels of its peak, so `floor + anything` lands
+   * above the whole record and never matches at all.
+   */
+  const threshold = loud - FADE_IN_RANGE;
+
+  const sustain = Math.max(2, Math.round(0.5 / FRAME_SECONDS));
+  const needed = Math.ceil(sustain * 0.7);
+
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i].db < threshold) continue;
+    const window = frames.slice(i, i + sustain);
+    const above = window.filter((frame) => frame.db >= threshold).length;
+    if (above < Math.min(needed, window.length)) continue;
+
+    return Number(Math.max(0, frames[i].at - FRAME_SECONDS).toFixed(3));
+  }
+
+  return null;
 }
 
 async function detectAudibleStartBySilence(file) {
