@@ -171,6 +171,52 @@ export async function resolveSource(target) {
 }
 
 /**
+ * Several search hits for one phrase, without downloading any of them.
+ *
+ * `resolveSource` takes the first result and trusts it, which is right when
+ * a person typed the phrase and will see what came back. Nothing is watching
+ * when a record arrives from TIDAL, so the caller needs a field to choose
+ * from and something to check each one against — the duration and the
+ * uploader are what it checks. Scoring lives in lib/tidal-youtube.ts; this
+ * only fetches.
+ */
+export async function searchCandidates(phrase, limit = 5) {
+  const { stdout } = await run(
+    "yt-dlp",
+    [
+      "--no-playlist",
+      "--skip-download",
+      "--no-warnings",
+      "--print",
+      "%(id)s\t%(title)s\t%(duration)s\t%(uploader)s\t%(artist)s\t%(track)s\t%(album)s\t%(release_year)s",
+      `ytsearch${Math.max(1, Math.min(10, limit))}:${phrase}`,
+    ],
+    { maxBuffer: 1024 * 1024 * 16 },
+  );
+
+  const real = (value) => (value && value !== "NA" ? value : "");
+
+  return stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [id, title, duration, uploader, artist, track, album, year] = line.split("\t");
+      return {
+        youtubeId: id,
+        title: title || "",
+        duration: Number(duration) || 0,
+        uploader: real(uploader),
+        artist: real(artist),
+        track: real(track),
+        album: real(album),
+        year: Number(real(year)) || 0,
+      };
+    })
+    .filter((entry) => /^[A-Za-z0-9_-]{11}$/.test(entry.youtubeId));
+}
+
+/**
  * YouTube's throttling changes often, and yt-dlp answers it by rotating which
  * client it impersonates. The default is right almost always; the fallbacks
  * cover the window between a YouTube change and the next yt-dlp release.
@@ -341,7 +387,11 @@ export async function cutFromSource({ youtubeId, start, outputId, onProgress }) 
     await fetchSource({ youtubeId, onProgress });
   }
 
-  const resolvedStart = start === "opening" ? await detectAudibleStart(master) : Number(start);
+  const resolvedStart = start === "opening"
+    ? await detectAudibleStart(master)
+    : start === "first-sound"
+      ? await detectFirstSound(master)
+      : Number(start);
   const leadIn = Math.min(PRE_ROLL, resolvedStart);
   const cutStart = Math.max(0, resolvedStart - leadIn);
 
@@ -581,6 +631,24 @@ function onsetFromEnvelope(frames) {
  * with and take the moment it ends. Cheaper, and right whenever the lead-in
  * really is silent.
  */
+/**
+ * Where the first sound is, rather than where the music gets going.
+ *
+ * `detectAudibleStart` asks for a level that is sustained near the loudest
+ * part of the recording, which is right for a jazz side: room tone, then a
+ * band. It is wrong for anything compressed. On a modern pop master the
+ * quiet 10th percentile is already loud, so the `loud - 6` clamp binds and
+ * the marker skips the intro to land on the drop — twenty seconds in, on a
+ * round that is supposed to open on the top of the tune.
+ *
+ * This one only asks whether the file opens with silence, and if so where
+ * that silence ends. A record that starts playing immediately gets zero,
+ * which is the honest answer for most things that are not a 1959 session.
+ */
+export async function detectFirstSound(file) {
+  return detectAudibleStartBySilence(file);
+}
+
 async function detectAudibleStartBySilence(file) {
   try {
     const peak = await peakLevel(file);

@@ -258,6 +258,13 @@ export const en = {
     playlistAutoHelp:
       "Cuts the opening of every record and looks the details up, but marks no solos — nobody can hear where one enters without listening. Everything lands unverified, so you play the clips through afterwards and confirm them.",
     playlistFetchAll: "Fetch the playlist",
+    tidal: "TIDAL artist link",
+    tidalHelp:
+      "Point it at a TIDAL artist and it lists what they recorded, drops anything already here, and finds each one on YouTube. A hit is only taken when its length matches what TIDAL says the record runs — so a live take, a cover or a whole album side is refused rather than guessed at. What comes back is a playlist like any other.",
+    tidalLoad: "List the artist",
+    tidalLoading: "Asking TIDAL",
+    tidalMisses: "{n} could not be matched on YouTube and were left out.",
+
     autoTitle: "Fetching the playlist",
     autoHelp:
       "One at a time, so the count is real. Leave this open — it stops if you navigate away. Everything that lands is unverified and waiting in the list on the left.",

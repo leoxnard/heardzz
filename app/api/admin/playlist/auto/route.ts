@@ -30,7 +30,14 @@ export async function POST(request: Request) {
   const denied = await requireAdmin();
   if (denied) return denied;
 
-  const body = (await request.json()) as { youtubeId?: string };
+  const body = (await request.json()) as {
+    youtubeId?: string;
+    isrc?: string;
+    tidalArtistId?: string;
+    /** Set when the queue came from a catalogue that already named the record. */
+    artist?: string;
+    song?: string;
+  };
   const youtubeId = body.youtubeId?.trim();
   if (!youtubeId) {
     return NextResponse.json({ error: "A video id is required" }, { status: 400 });
@@ -39,7 +46,10 @@ export async function POST(request: Request) {
   try {
     await checkTools();
     const source = await resolveSource(`https://www.youtube.com/watch?v=${youtubeId}`);
-    const inspected = await inspectSource(source);
+    const inspected = await inspectSource(source, undefined, {
+      artist: body.artist,
+      song: body.song,
+    });
 
     const artist = cleanName(inspected.artist);
     const song = cleanName(inspected.song);
@@ -71,6 +81,9 @@ export async function POST(request: Request) {
       year: inspected.year,
       personnel: inspected.personnel,
       discogsReleaseId: inspected.discogsReleaseId,
+      // Only set when the queue came from TIDAL; a pasted playlist has neither.
+      isrc: body.isrc,
+      tidalArtistId: body.tidalArtistId,
       // No solos are marked, so there is only the head clip, and the start
       // is wherever the onset detector heard the music begin.
       start: "opening",

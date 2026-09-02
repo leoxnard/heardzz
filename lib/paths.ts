@@ -24,6 +24,8 @@ export const SOURCE_DIR = path.join(DATA_DIR, "sources");
 export const LIBRARY_PATH = path.join(DATA_DIR, "solos.json");
 export const SUGGESTIONS_PATH = path.join(DATA_DIR, "suggestions.json");
 export const REPORTS_PATH = path.join(DATA_DIR, "reports.json");
+/** normalized artist name -> TIDAL id, built by crawling similar artists. */
+export const TIDAL_ARTISTS_PATH = path.join(DATA_DIR, "tidal-artists.json");
 
 /** Clip filenames are derived from slugs, so anything else is a probe. */
 const SAFE_FILE = /^[a-z0-9][a-z0-9-]{0,120}\.mp3$/;

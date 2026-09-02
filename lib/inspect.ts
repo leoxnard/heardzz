@@ -68,6 +68,7 @@ const KNOWN_SONG_KEYS = new Set(SONGS.map(songKey));
 export async function inspectSource(
   source: ResolvedSource,
   discogs?: string,
+  known?: { artist?: string; song?: string },
 ): Promise<InspectResult> {
   const notes: string[] = [];
 
@@ -79,7 +80,24 @@ export async function inspectSource(
   let album = cleanName(source.album);
   let year = source.year;
 
-  if (artist && song) {
+  /*
+   * A caller that already knows the record outranks the upload.
+   *
+   * An upload is tagged by whoever made it, and what it calls the band is
+   * whatever was on the sleeve of the pressing they had: "Louis Armstrong
+   * And The All-Stars" for a record the library — and the player typing an
+   * answer — knows as Louis Armstrong. When a catalogue has already named
+   * the recording, that name is the better one, and it is also the one the
+   * Discogs lookup below should be searching on.
+   */
+  const knownArtist = cleanName(known?.artist);
+  const knownSong = cleanName(known?.song);
+
+  if (knownArtist && knownSong) {
+    artist = knownArtist;
+    song = knownSong;
+    notes.push("Artist and title came from the catalogue this record was found in.");
+  } else if (artist && song) {
     notes.push("Artist and title came from the upload's own music tags.");
   } else {
     const parsed = parseTitle(source.title, source.uploader);

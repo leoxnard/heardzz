@@ -55,6 +55,22 @@ function fold(value: string): string {
   return normalize(cleanName(value).replace(TAKE, "").replace(TRAILING_NOISE, ""));
 }
 
+/**
+ * The name at the front of a billing, spelled as it was given.
+ *
+ * `artistKey` already splits on this to compare records, but it folds the
+ * result to a key. The answer a player types needs the same split without
+ * the folding: TIDAL bills a track to every name on the date, so a credit
+ * arrives as "Electric Groove Machine, Derrick McKenzie, Simon Katz, ..." —
+ * seven names, and an answer nobody is going to type. The leader is the
+ * answer; the rest is the sleeve.
+ */
+export function leadName(artist: string): string {
+  const cleaned = cleanName(artist);
+  const lead = cleaned.split(JOINT)[0];
+  return lead?.trim() || cleaned;
+}
+
 /** A tune title, folded down to the tune. */
 export function songKey(song: string): string {
   return fold(song);

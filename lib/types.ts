@@ -100,6 +100,18 @@ export interface Solo {
 
   /** One line of context, shown only after the round closes. */
   note?: string;
+
+  /**
+   * The recording's ISRC, when it arrived by way of TIDAL.
+   *
+   * The library has never had an identifier that means anything outside it —
+   * a Discogs release is a pressing and a YouTube id is an upload, and both
+   * can be several for one recording. An ISRC is the recording, so two
+   * catalogues can agree about it without matching on spelling.
+   */
+  isrc?: string;
+  /** The TIDAL artist this came from, so the same seed can be walked again. */
+  tidalArtistId?: string;
 }
 
 /**

@@ -27,6 +27,27 @@ export function resolveSource(target: string): Promise<{
   year: number;
 }>;
 
+/** Several search hits for one phrase. Scored by lib/tidal-youtube.ts. */
+export function searchCandidates(
+  phrase: string,
+  limit?: number,
+): Promise<
+  {
+    youtubeId: string;
+    title: string;
+    duration: number;
+    uploader: string;
+    artist: string;
+    track: string;
+    album: string;
+    year: number;
+  }[]
+>;
+
+/** First sound, rather than where the music gets going. Kinder than
+ *  detectAudibleStart on compressed material. */
+export function detectFirstSound(file: string): Promise<number>;
+
 export const SILENT_DBFS: number;
 
 export function levelAtMarker(
@@ -83,7 +104,7 @@ export function fetchSource(options: {
 /** Cut one clip out of a recording already on disk. No network. */
 export function cutFromSource(options: {
   youtubeId: string;
-  start: number | "opening";
+  start: number | "opening" | "first-sound";
   outputId: string;
   onProgress?: (message: string) => void;
 }): Promise<CutClip>;

@@ -34,6 +34,9 @@ export interface PublishInput {
   note?: string;
   personnel?: Credit[];
   discogsReleaseId?: number;
+  /** Carried through when the record was found via TIDAL rather than pasted. */
+  isrc?: string;
+  tidalArtistId?: string;
   /** Where the tune itself begins. "opening" finds the first sound instead. */
   start: number | "opening";
   solos: MarkedSolo[];
@@ -150,6 +153,8 @@ export async function publishRecord(body: PublishInput): Promise<PublishOutcome>
       personnel,
       ...soloist,
       discogsReleaseId: body.discogsReleaseId,
+      isrc: body.isrc || existing?.isrc,
+      tidalArtistId: body.tidalArtistId || existing?.tidalArtistId,
       youtubeId: body.youtubeId,
       soloStart: head.soloStart,
       audio: head.audio,

@@ -1,0 +1,92 @@
+import { NextResponse } from "next/server";
+import { cutFromSource, dropSource, searchCandidates } from "@/scripts/extract.mjs";
+import { requireAdmin } from "@/lib/admin-guard";
+import { ephemeralId, toSolo, type Cut } from "@/lib/ephemeral";
+import { trackAlbum } from "@/lib/tidal";
+import { pickBest, searchPhrase, type SearchHit } from "@/lib/tidal-youtube";
+import type { Candidate } from "@/lib/tidal-candidates";
+
+export const dynamic = "force-dynamic";
+/** A download and a cut, for one record. */
+export const maxDuration = 300;
+
+/**
+ * Fetch one planned round and cut its opening.
+ *
+ * One per request, like the unattended playlist run: a sitting's worth of
+ * downloads is far longer than any sensible request, and one at a time is
+ * what lets the client keep three ahead while somebody plays the first.
+ *
+ * The whole recording is dropped as soon as the clip exists. It is only
+ * needed to cut from, it is the largest thing on disk, and nothing here is
+ * going to be marked up later.
+ */
+export async function POST(request: Request) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  const body = (await request.json()) as { candidate?: Candidate };
+  const candidate = body.candidate;
+
+  if (!candidate?.song || !candidate.artist) {
+    return NextResponse.json({ error: "A planned round is required" }, { status: 400 });
+  }
+
+  try {
+    /*
+     * Finding the upload happens here rather than in the plan, so a sitting
+     * is limited by how long somebody keeps playing rather than by how many
+     * were resolved before they started.
+     *
+     * A candidate that cannot be confirmed is reported as skipped, not as a
+     * failure: the caller simply asks for the next one. Refusing is the
+     * normal case for a fair few of these — the duration check turns down
+     * live takes and covers, and that is the check doing its job.
+     */
+    let hits: SearchHit[] = [];
+    try {
+      hits = (await searchCandidates(searchPhrase(candidate), 5)) as SearchHit[];
+    } catch {
+      return NextResponse.json({ skipped: true, reason: "YouTube search failed" });
+    }
+
+    const { match, rejected } = pickBest(candidate, hits);
+    if (!match) {
+      return NextResponse.json({
+        skipped: true,
+        reason: rejected[0]?.reason ?? "nothing came back",
+      });
+    }
+    const youtubeId = match.hit.youtubeId;
+
+    const cut = (await cutFromSource({
+      youtubeId,
+      /*
+       * Not "opening": that detector wants a level sustained near the
+       * loudest part of the record, which on a compressed master skips the
+       * intro and lands on the drop. These rounds are the top of the tune
+       * or they are nothing.
+       */
+      start: "first-sound",
+      outputId: ephemeralId(youtubeId, candidate.song),
+    })) as Cut;
+
+    await dropSource(youtubeId);
+
+    // One extra call, next to a download that already took seconds. Failing
+    // it costs the sleeve a line, not the round.
+    let album: string | undefined;
+    try {
+      album = (await trackAlbum(candidate.tidalTrackId))?.title;
+    } catch {
+      album = undefined;
+    }
+
+    return NextResponse.json({ solo: toSolo(candidate, youtubeId, cut, album) });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not fetch that one" },
+      { status: 500 },
+    );
+  }
+}

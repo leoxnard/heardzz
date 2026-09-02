@@ -50,3 +50,6 @@ next-env.d.ts
 
 # whole recordings, held only while one is being marked up
 data/sources/
+
+# TIDAL artist ids, rebuilt by crawling; not worth tracking.
+/data/tidal-artists.json

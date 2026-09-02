@@ -27,6 +27,12 @@ interface PlaylistEntry {
   title: string;
   duration: number;
   uploader: string;
+  /** Present only on a queue seeded from TIDAL. */
+  isrc?: string;
+  tidalArtistId?: string;
+  /** TIDAL's names for the record, which outrank the upload's own tags. */
+  artist?: string;
+  song?: string;
 }
 
 /** How one entry of an automatically fetched playlist ended up. */
@@ -75,6 +81,11 @@ export function LibraryAdmin({
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   /** Ticked: fetch the whole playlist unattended and verify it afterwards. */
   const [playlistAuto, setPlaylistAuto] = useState(false);
+  const [tidalTarget, setTidalTarget] = useState("");
+  const [tidalBusy, setTidalBusy] = useState(false);
+  const [tidalError, setTidalError] = useState<string | null>(null);
+  /** Tunes TIDAL listed that no YouTube upload could be confirmed against. */
+  const [tidalMisses, setTidalMisses] = useState(0);
 
   const [autoResults, setAutoResults] = useState<AutoResult[]>([]);
   const [autoRunning, setAutoRunning] = useState(false);
@@ -171,6 +182,44 @@ export function LibraryAdmin({
       setPlaylistError(cause instanceof Error ? cause.message : "Could not read that playlist");
     } finally {
       setPlaylistBusy(false);
+    }
+  }
+
+  /**
+   * The same queue, seeded from TIDAL instead of a pasted playlist.
+   *
+   * The route answers in the playlist's shape on purpose, so everything from
+   * here down — the marking queue, the unattended run, the duplicate check —
+   * cannot tell the difference and does not need to.
+   */
+  async function loadTidal() {
+    setTidalBusy(true);
+    setTidalError(null);
+    setTidalMisses(0);
+    setPreloaded({});
+    discarded.current = new Set();
+    try {
+      const response = await fetch("/api/admin/tidal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: tidalTarget.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not read that artist");
+      const entries = data.entries as PlaylistEntry[];
+      setTidalMisses(Array.isArray(data.misses) ? data.misses.length : 0);
+      if (playlistAuto) {
+        setJob({ kind: "auto", entries, known: data.known ?? 0 });
+        setTidalTarget("");
+        void runAuto(entries);
+      } else {
+        setJob({ kind: "queue", entries, index: 0, known: data.known ?? 0 });
+        setTidalTarget("");
+      }
+    } catch (cause) {
+      setTidalError(cause instanceof Error ? cause.message : "Could not read that artist");
+    } finally {
+      setTidalBusy(false);
     }
   }
 
@@ -305,7 +354,13 @@ export function LibraryAdmin({
         const response = await fetch("/api/admin/playlist/auto", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ youtubeId: entry.youtubeId }),
+          body: JSON.stringify({
+            youtubeId: entry.youtubeId,
+            isrc: entry.isrc,
+            tidalArtistId: entry.tidalArtistId,
+            artist: entry.artist,
+            song: entry.song,
+          }),
         });
         const data = await response.json();
 
@@ -556,6 +611,33 @@ export function LibraryAdmin({
                   : t("mark.playlistLoad")}
             </button>
           </div>
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <input
+              type="text"
+              value={tidalTarget}
+              onChange={(event) => setTidalTarget(event.target.value)}
+              placeholder="https://tidal.com/artist/1072"
+              className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-4 py-3 text-sm text-paper focus:border-flame focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={loadTidal}
+              disabled={tidalBusy || !tidalTarget.trim()}
+              className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+            >
+              {tidalBusy ? t("mark.tidalLoading") : t("mark.tidalLoad")}
+            </button>
+          </div>
+          <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+            {t("mark.tidalHelp")}
+          </p>
+          {tidalMisses > 0 && (
+            <p className="type-body mt-2 text-xs text-paper-faint">
+              {t("mark.tidalMisses", { n: tidalMisses })}
+            </p>
+          )}
+          {tidalError && <p className="type-body mt-3 text-sm text-flame">{tidalError}</p>}
 
           {/* Two ways to spend a playlist: an evening marking every solo, or
               a run of openings to listen through afterwards. */}

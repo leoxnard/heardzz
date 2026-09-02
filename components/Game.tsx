@@ -52,7 +52,25 @@ const FIELDS = {
 
 type Mode = "daily" | "practice";
 
-export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
+export function Game({
+  solos,
+  mode,
+  ordered = false,
+}: {
+  solos: Solo[];
+  mode: Mode;
+  /**
+   * Play the pool in the order it was given, one record per index, instead
+   * of picking from it.
+   *
+   * `pickSequential` derives its running order from the size of the pool,
+   * so a pool that grows while somebody is playing gets reshuffled on every
+   * arrival and records come round again. A sitting that is still being
+   * fetched needs the opposite guarantee: index 3 is the fourth record that
+   * arrived and stays the fourth record, whatever lands next.
+   */
+  ordered?: boolean;
+}) {
   const { config, patch, reset, loaded: configLoaded } = useConfig();
   const { stats, setStats, resetStats } = useStats();
   const { record, setRecord, loaded: recordLoaded } = useDailyRecord();
@@ -63,7 +81,6 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
   const [inputs, setInputs] = useState<Partial<Record<Field, string>>>({});
 
   const level = levelOf(config);
-  const fields = activeFields(config);
 
   // Filtering can empty the pool entirely; falling back beats a blank screen.
   const pool = useMemo(() => {
@@ -77,8 +94,24 @@ export function Game({ solos, mode }: { solos: Solo[]; mode: Mode }) {
     () =>
       mode === "daily"
         ? pickDaily(pool, dateKey)
-        : pickSequential(pool, practiceIndex),
-    [pool, mode, dateKey, practiceIndex],
+        : ordered
+          // Past the end means the next one has not arrived yet, not that
+          // it is time to start over.
+          ? (pool[practiceIndex] ?? null)
+          : pickSequential(pool, practiceIndex),
+    [pool, mode, dateKey, practiceIndex, ordered],
+  );
+
+  /*
+   * A record with no marked solo cannot be asked who is soloing on it.
+   * Records fetched without anybody at the screen have only their opening —
+   * the TIDAL rounds by design, and an unattended playlist run in passing —
+   * so the soloist question is dropped rather than asked about a solo that
+   * was never located.
+   */
+  const fields = useMemo(
+    () => activeFields(config).filter((field) => field !== "soloist" || Boolean(solo?.soloAt)),
+    [config, solo],
   );
 
   const [round, setRound] = useState<RoundState | null>(null);
