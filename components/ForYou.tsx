@@ -444,7 +444,7 @@ export function ForYou() {
           </button>
         </div>
         {/* Practice: these are one-off rounds, not a shared daily. */}
-        <Game solos={solos} mode="practice" ordered />
+        <Game solos={solos} mode="practice" ordered extraArtists={reached} />
       </div>
     );
   }
@@ -692,45 +692,60 @@ function Door({
         {[
           { label: primary, hint: submitHint, onSubmit, lead: true },
           ...(alternates ?? []).map((choice) => ({ ...choice, lead: false })),
-        ].map((choice) => (
-          <button
-            key={choice.label}
-            type="button"
-            onClick={choice.onSubmit}
-            disabled={busy || !filled}
-            style={
-              choice.lead && filled && !busy
-                ? { borderColor: accent, color: accent }
-                : undefined
-            }
-            /*
-              The hover is the other half of making these read as buttons.
-              The border takes the door's own accent, the panel lifts off
-              the background, and the arrow moves — three signals rather
-              than one, because a single colour shift on a dark ground is
-              easy to miss and this is the control the whole screen exists
-              for.
-            */
-            className="group/act flex w-full items-center justify-between gap-3 border border-ink-edge px-4 py-3 text-left transition-all duration-150 enabled:hover:border-[var(--accent)] enabled:hover:bg-ink-raised disabled:opacity-40"
-          >
-            <span className="min-w-0">
-              <span className="type-eyebrow block text-xs text-paper transition-colors group-hover/act:text-[var(--accent)]">
-                {choice.label}
-              </span>
-              {choice.hint && (
-                <span className="type-body mt-1 block text-xs text-paper-faint">
-                  {choice.hint}
-                </span>
-              )}
-            </span>
-            <span
-              aria-hidden
-              className="type-eyebrow shrink-0 text-xs transition-transform duration-150 group-hover/act:translate-x-1"
+        ].map((choice) => {
+          const lead = choice.lead && filled && !busy;
+
+          return (
+            <button
+              key={choice.label}
+              type="button"
+              onClick={choice.onSubmit}
+              disabled={busy || !filled}
+              /*
+                Hover fills the box in flame rather than nudging its edges.
+
+                The accent border alone was the first attempt and it was too
+                quiet — one colour shift on a dark ground, on a screen whose
+                whole purpose is these controls. Filling it is the move the
+                rest of the app already makes when something is settled: a
+                solved answer in `ChoiceField` is flame with ink on top, and
+                so is a text selection. Reusing that reads as "this is the
+                one" without needing to be learned.
+
+                Flame rather than the door's own accent, so the answer to
+                "what am I about to press" looks the same in all three
+                columns. The accent still marks the primary at rest, which
+                is a different question.
+
+                Classes, not the inline style this used to carry: an inline
+                border colour beats every hover rule, so the box could never
+                have changed under the cursor.
+              */
+              className={`group/act flex w-full items-center justify-between gap-3 border px-4 py-3 text-left transition-colors duration-150 enabled:hover:border-flame enabled:hover:bg-flame disabled:opacity-40 ${
+                lead ? "border-[var(--accent)]" : "border-ink-edge"
+              }`}
             >
-              &rarr;
-            </span>
-          </button>
-        ))}
+              <span className="min-w-0">
+                <span className="type-eyebrow block text-xs text-paper transition-colors group-hover/act:text-ink">
+                  {choice.label}
+                </span>
+                {choice.hint && (
+                  <span className="type-body mt-1 block text-xs text-paper-faint transition-colors group-hover/act:text-ink/75">
+                    {choice.hint}
+                  </span>
+                )}
+              </span>
+              <span
+                aria-hidden
+                className={`type-eyebrow shrink-0 text-xs transition-all duration-150 group-hover/act:translate-x-1 group-hover/act:text-ink ${
+                  lead ? "text-[var(--accent)]" : ""
+                }`}
+              >
+                &rarr;
+              </span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );

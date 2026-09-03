@@ -77,9 +77,15 @@ export function Game({
   solos,
   mode,
   ordered = false,
+  extraArtists = [],
 }: {
   solos: Solo[];
   mode: Mode;
+  /**
+   * Names to suggest beyond the index and the records in hand — the artists
+   * a for-you sitting is drawing on, most of which it has not fetched yet.
+   */
+  extraArtists?: string[];
   /**
    * Play the pool in the order it was given, one record per index, instead
    * of picking from it.
@@ -265,9 +271,25 @@ export function Game({
     );
   }, [round, solo, mode, dateKey, config, setStats]);
 
+  /*
+   * The index, plus everyone this sitting has anything to do with.
+   *
+   * A for-you round can be by anybody, and the index is a jazz index — so
+   * a sitting built off somebody's own listening used to put one rock band
+   * into four hundred jazz names. That is worse than unhelpful: typing a
+   * letter surfaced the one name that did not belong, which is most of the
+   * answer. The neighbours fetched for the choice levels are already on
+   * each solo, and `extraArtists` carries the acts the sitting is drawing
+   * from, so both go in — the list ends up looking like the music being
+   * played rather than like the library.
+   */
   const artistPool = useMemo(
-    () => buildPool(ARTISTS, solos.map((s) => s.artist)),
-    [solos],
+    () =>
+      buildPool(ARTISTS, [
+        ...solos.flatMap((s) => [s.artist, ...(s.nearArtists ?? [])]),
+        ...extraArtists,
+      ]),
+    [solos, extraArtists],
   );
   const songPool = useMemo(() => buildPool(SONGS, solos.map((s) => s.song)), [solos]);
   /*
