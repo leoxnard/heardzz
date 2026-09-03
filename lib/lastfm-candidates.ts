@@ -1,5 +1,5 @@
 import { cleanName } from "./clean";
-import { shuffle } from "./daily";
+import { mulberry32 } from "./daily";
 import { recordKey } from "./duplicates";
 import { canonical, ARTISTS, SONGS } from "./lexicon";
 import { loadSolos } from "./library";
@@ -40,23 +40,53 @@ const SONG_KEYS = new Set(SONGS.map((song) => recordKey("", song)));
 export interface TrackReport {
   candidates: Candidate[];
   /** Why the rest went, so a thin round is explainable rather than mysterious. */
-  skipped: { alreadyInLibrary: number; duplicate: number };
+  skipped: { alreadyInLibrary: number; duplicate: number; unusable: number };
 }
 
 /**
- * Tunes to candidates, in an order that is not the same twice.
+ * Draw an order at random, but let weight pull toward the front.
  *
- * Weight decides who gets in — the list arrives strongest first and is cut
- * at whatever the caller asked for — but not what order they are played in.
- * Taking them in weight order would make one profile produce one sitting
- * for ever, so the survivors are shuffled, exactly as `tasteFromArtistIds`
- * shuffles the artists it reaches.
+ * A flat shuffle was wrong here, and wrong in a way that took a real
+ * history to see. Scrobble counts are not spread evenly: of one listener's
+ * top two hundred, a hundred and twelve sat at five to nine plays and
+ * three sat above fifty. Shuffling that flat means five rounds in six come
+ * off the thin end — so a mode whose whole promise is "records you know"
+ * spent its time on tunes played once through a playlist. The listener
+ * said so, and the profile agreed with him.
+ *
+ * `lib/taste.ts` had already met this and said it plainly: shuffling the
+ * whole list puts the obscure tail back in. It shuffles inside a band to
+ * avoid that; this does it with weights, because here every tune is a
+ * candidate and only the odds should differ.
+ *
+ * Squared on purpose. Weighting by the count alone still left a third of
+ * the draw in that thin end, because there is so much more of it; squaring
+ * puts it near a tenth and lets the records somebody actually knows lead.
+ * The tail is still reachable, so two sittings are never the same.
+ *
+ * (Efraimidis–Spirakis: an exponential race, one key per item, sorted. A
+ * weighted shuffle without replacement in one pass.)
+ */
+function weightedOrder(candidates: Candidate[], seed: number): Candidate[] {
+  const random = mulberry32(seed);
+  return candidates
+    .map((candidate) => ({
+      candidate,
+      // 1 - random() so a zero never reaches the logarithm.
+      key: -Math.log(1 - random()) / Math.max(candidate.popularity ** 2, 1e-6),
+    }))
+    .sort((a, b) => a.key - b.key)
+    .map((entry) => entry.candidate);
+}
+
+/**
+ * Tunes to candidates, ordered so the best-known lead but nothing is fixed.
  */
 export async function candidatesFromTracks(played: FoundTrack[]): Promise<TrackReport> {
   const solos = await loadSolos();
   const taken = new Set(solos.map((solo) => recordKey(solo.artist, solo.song)));
   const seen = new Set<string>();
-  const skipped = { alreadyInLibrary: 0, duplicate: 0 };
+  const skipped = { alreadyInLibrary: 0, duplicate: 0, unusable: 0 };
   const candidates: Candidate[] = [];
 
   /*
@@ -68,6 +98,12 @@ export async function candidatesFromTracks(played: FoundTrack[]): Promise<TrackR
   const most = Math.max(...played.map((track) => track.weight), 1);
 
   for (const track of played) {
+    // The one thing every road here depends on — see `judge`.
+    if (!track.durationSec) {
+      skipped.unusable++;
+      continue;
+    }
+
     /*
      * Deliberately not `leadName`, which the TIDAL side uses here.
      *
@@ -125,5 +161,5 @@ export async function candidatesFromTracks(played: FoundTrack[]): Promise<TrackR
     });
   }
 
-  return { candidates: shuffle(candidates, Date.now()), skipped };
+  return { candidates: weightedOrder(candidates, Date.now()), skipped };
 }

@@ -165,9 +165,21 @@ interface TopTracksResponse extends Fault {
  * in seconds — the same recording is 345000 there and 345 here — so the
  * two are never mixed and only this one is read.
  *
- * A track with no length is dropped rather than carried with a null. The
- * duration check is the one thing standing between a round and a lyric
- * video, and a candidate that cannot be checked is not worth a download.
+ * Rows with no length are kept here, at `durationSec: 0`, and dropped by
+ * `candidatesFromTracks`, which is the one place a length is actually
+ * required. Last.fm omits it on about a quarter of a real history — and
+ * unevenly, mostly on tracks scrobbled under a list of credits.
+ *
+ * Keeping them costs nothing and buys one thing: the middle round uses this
+ * list to work out who somebody already listens to, and that question does
+ * not need a length. Dropping them here would have narrowed that answer for
+ * no reason.
+ *
+ * Asking `track.getInfo` to fill the gap was tried and removed. Against a
+ * real profile it repaired none of the thirteen missing from the top sixty
+ * — Last.fm does not hold a length for those tracks in any endpoint — so it
+ * was thirteen calls and two seconds for nothing.
+ *
  * `null` for a missing user, exactly as `topArtists` does it.
  */
 export async function topTracks(user: string, limit: number): Promise<FoundTrack[] | null> {
@@ -185,7 +197,7 @@ export async function topTracks(user: string, limit: number): Promise<FoundTrack
     const song = (track?.name ?? "").trim();
     const artist = (track?.artist?.name ?? "").trim();
     const durationSec = Number(track?.duration ?? 0);
-    if (!song || !usableName(artist) || !durationSec) continue;
+    if (!song || !usableName(artist)) continue;
 
     played.push({
       artist,
@@ -196,6 +208,10 @@ export async function topTracks(user: string, limit: number): Promise<FoundTrack
   }
 
   return played;
+}
+
+interface TrackInfoResponse extends Fault {
+  track?: { album?: { title?: string }; duration?: string };
 }
 
 /**
@@ -275,10 +291,6 @@ export async function tagTracks(tag: string, limit: number): Promise<FoundTrack[
   });
   const block = data?.tracks as { track?: unknown } | undefined;
   return readTrackList(block, (_row, index) => limit - index);
-}
-
-interface TrackInfoResponse extends Fault {
-  track?: { album?: { title?: string } };
 }
 
 /**
