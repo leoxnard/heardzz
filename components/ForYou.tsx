@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Game } from "@/components/Game";
+import { SiteHeader } from "@/components/SiteHeader";
 import type { Solo } from "@/lib/types";
 import type { Candidate } from "@/lib/tidal-candidates";
 
@@ -286,14 +287,22 @@ export function ForYou() {
     }
   }
 
-  function start() {
+  /**
+   * A pasted link, read one of two ways.
+   *
+   * "inside" plays what is on the list. "wider" reads it for who is on it
+   * and widens to artists who sound like them — the only reading this door
+   * had, and still the right one for somebody handing over a playlist as a
+   * description of their taste rather than as a set of questions.
+   */
+  function start(mode: "inside" | "wider") {
     const trimmed = target.trim();
     void beginSession(
       () =>
         fetch("/api/foryou/plan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target: trimmed }),
+          body: JSON.stringify({ target: trimmed, mode }),
         }),
       trimmed,
     );
@@ -340,15 +349,15 @@ export function ForYou() {
    * at whichever of the two difficulties they picked.
    *
    * "known" is the gentle one: the records already in their history, so
-   * every round is one they have heard — often hundreds of times. "wider"
-   * keeps only *who* they listen to and widens to artists they have not
-   * played, which is the same bargain a pasted playlist strikes.
+   * every round is one they have heard — often hundreds of times.
+   * "nearby" keeps the anchor but steps off it, to records sitting next to
+   * theirs that they have not played.
    *
    * Neither carries a link to replan from, so the response brings its own
    * `target` — and the easy one brings its whole supply at once, which is
    * what `replan: false` in that response settles.
    */
-  function startFromLastfm(mode: "known" | "nearby" | "wider") {
+  function startFromLastfm(mode: "known" | "nearby") {
     const trimmed = listener.trim();
     void beginSession(
       () =>
@@ -449,7 +458,9 @@ export function ForYou() {
         : "Build me a round";
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-16 sm:px-10">
+    <div className="flex min-h-screen flex-col">
+      <SiteHeader />
+      <div className="mx-auto w-full max-w-5xl px-6 py-16 sm:px-10">
       <p className="type-eyebrow text-paper-faint">Three ways in</p>
       <h1 className="type-display mt-3 text-flame">Records for you</h1>
       <p className="type-body mt-4 max-w-xl text-sm leading-relaxed text-paper-faint">
@@ -480,14 +491,22 @@ export function ForYou() {
             />
           }
           title="A playlist you keep"
-          blurb="Paste a public TIDAL playlist. It reads who is on it and widens that to artists who sound like them."
+          blurb="Paste a public TIDAL playlist, artist or track. Play what is on it, or use it as a description of what you want."
           placeholder="https://tidal.com/playlist/…"
           value={target}
           onChange={setTarget}
-          onSubmit={start}
+          onSubmit={() => start("inside")}
           busy={busy}
           label={label}
-          submitHint="Artists from the playlist, plus ones who sound like them"
+          submitLabel="What is on it"
+          submitHint="Easier — the records actually on the list, nothing else"
+          alternates={[
+            {
+              label: "Things like it",
+              hint: "Harder — artists who sound like the ones on the list",
+              onSubmit: () => start("wider"),
+            },
+          ]}
         />
 
         <Door
@@ -555,11 +574,6 @@ export function ForYou() {
               hint: "Harder — records next to yours, which you have not played",
               onSubmit: () => startFromLastfm("nearby"),
             },
-            {
-              label: "Go wider",
-              hint: "Hardest — artists you have never listened to at all",
-              onSubmit: () => startFromLastfm("wider"),
-            },
           ]}
         />
       </div>
@@ -570,6 +584,7 @@ export function ForYou() {
         </p>
       )}
       {error && <p className="type-body mt-6 text-sm text-flame">{error}</p>}
+      </div>
     </div>
   );
 }
@@ -688,17 +703,30 @@ function Door({
                 ? { borderColor: accent, color: accent }
                 : undefined
             }
-            className="group/act flex w-full items-center justify-between gap-3 border border-ink-edge px-4 py-3 text-left transition-colors enabled:hover:border-paper-faint disabled:opacity-40"
+            /*
+              The hover is the other half of making these read as buttons.
+              The border takes the door's own accent, the panel lifts off
+              the background, and the arrow moves — three signals rather
+              than one, because a single colour shift on a dark ground is
+              easy to miss and this is the control the whole screen exists
+              for.
+            */
+            className="group/act flex w-full items-center justify-between gap-3 border border-ink-edge px-4 py-3 text-left transition-all duration-150 enabled:hover:border-[var(--accent)] enabled:hover:bg-ink-raised disabled:opacity-40"
           >
             <span className="min-w-0">
-              <span className="type-eyebrow block text-xs text-paper">{choice.label}</span>
+              <span className="type-eyebrow block text-xs text-paper transition-colors group-hover/act:text-[var(--accent)]">
+                {choice.label}
+              </span>
               {choice.hint && (
                 <span className="type-body mt-1 block text-xs text-paper-faint">
                   {choice.hint}
                 </span>
               )}
             </span>
-            <span aria-hidden className="type-eyebrow shrink-0 text-xs">
+            <span
+              aria-hidden
+              className="type-eyebrow shrink-0 text-xs transition-transform duration-150 group-hover/act:translate-x-1"
+            >
               &rarr;
             </span>
           </button>

@@ -1,5 +1,5 @@
 import { shuffle } from "./daily";
-import { candidatesForArtist, type Candidate } from "./tidal-candidates";
+import { candidatesForArtist, candidatesFromPlaylist, type Candidate } from "./tidal-candidates";
 import {
   getPlaylist,
   playlistTracks,
@@ -16,11 +16,18 @@ import {
    them to log in to TIDAL, and a bare profile link exposes nothing at
    all. A playlist they made public is the whole signal.
 
-   What is done with it is deliberately not "play them their own
-   playlist". Naming a record you already own is not a game. So the
-   playlist is read for *who* they like, that set is widened along
-   TIDAL's similar-artist edges, and the tunes come from the widened
-   set — near enough to be fair, far enough to be worth guessing.
+   Two things can be meant by pasting one, and this file answers both.
+
+   `tasteFromArtistIds` reads the list for *who* is on it, widens that
+   along TIDAL's similar-artist edges, and takes the tunes from the
+   widened set — near enough to be fair, far enough to be worth guessing.
+   That was once the only reading here, on the argument that naming a
+   record you already own is not a game.
+
+   The argument was half right. It is not a game when nobody asked for
+   it; it is exactly the game when somebody hands over a list and wants
+   to be quizzed on it. `insideOf` is that reading: the records actually
+   on the list, no crawl.
 
    Everything already in the library is dropped on the way through, so
    what comes back is only records this site cannot currently play.
@@ -174,4 +181,53 @@ export async function tasteFromArtistIds(ids: string[], source: string): Promise
   }
 
   return { source, reached, candidates: shuffle(candidates, seed) };
+}
+
+/**
+ * What is actually on the thing somebody pasted, rather than what sounds
+ * like it.
+ *
+ * The widening above is the right answer to "build me a round out of my
+ * taste" and the wrong answer to "quiz me on this playlist". Both are
+ * reasonable things to mean by pasting a link, and only one of them was
+ * available — so this is the other: the records on the list, the tunes by
+ * that artist, and no crawl.
+ *
+ * An artist link reads as that artist's own catalogue and a track link as
+ * its artist's, since one tune is not a sitting. Neither widens.
+ */
+export async function insideOf(ref: TidalRef): Promise<TasteResult> {
+  const seed = Date.now();
+
+  if (ref.kind === "playlist") {
+    const playlist = await getPlaylist(ref.id);
+    if (!playlist) return { source: "", reached: [], candidates: [] };
+
+    const candidates = await candidatesFromPlaylist(await playlistTracks(ref.id));
+    return {
+      source: playlist.name || "that playlist",
+      // Named rather than "reached": nothing was widened to.
+      reached: Array.from(new Set(candidates.map((c) => c.artist))).slice(0, 12),
+      /*
+       * A flat shuffle, unlike the weighted draw a Last.fm history gets.
+       * Scrobble counts have a long thin tail worth steering away from; a
+       * playlist has none, because every track on it was put there on
+       * purpose and they are all equally meant.
+       */
+      candidates: shuffle(candidates, seed),
+    };
+  }
+
+  const { ids, source } = await seedArtists(ref);
+  const [id] = ids;
+  if (!id) return { source, reached: [], candidates: [] };
+
+  const report = await candidatesForArtist(id);
+  if (!report) return { source, reached: [], candidates: [] };
+
+  return {
+    source: report.artist,
+    reached: [report.artist],
+    candidates: shuffle(report.candidates, seed),
+  };
 }

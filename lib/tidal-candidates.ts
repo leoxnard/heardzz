@@ -2,7 +2,7 @@ import { cleanName } from "./clean";
 import { leadName, recordKey } from "./duplicates";
 import { canonical, ARTISTS, SONGS } from "./lexicon";
 import { loadSolos } from "./library";
-import { artistTracks, getArtist, type TidalTrack } from "./tidal";
+import { artistTracks, getArtist, trackArtists, type TidalTrack } from "./tidal";
 
 /* ------------------------------------------------------------------
    From an artist to a shortlist worth fetching.
@@ -109,4 +109,62 @@ export async function candidatesForArtist(artistId: string): Promise<CandidateRe
   candidates.sort((a, b) => b.popularity - a.popularity);
 
   return { artist: artistName, tidalArtistId: artistId, candidates, skipped };
+}
+
+/**
+ * The records actually on a playlist, rather than records like them.
+ *
+ * `candidatesForArtist` above answers "what else did this artist make";
+ * this answers "what is on this list", which is the other thing somebody
+ * pasting a playlist link might reasonably mean — and until now the only
+ * thing they could not ask for.
+ *
+ * No popularity floor, unlike the widened round. That floor exists because
+ * a crawl four hops from somebody's taste finds acts nobody has heard of;
+ * a playlist cannot wander like that, because a person put every track on
+ * it on purpose. Filtering it would be overruling them about their own
+ * list.
+ *
+ * One call per track, because TIDAL bills the artist on a relationship
+ * rather than on the track itself. That is the cost of this mode and the
+ * reason it reads one page rather than the whole list.
+ */
+export async function candidatesFromPlaylist(tracks: TidalTrack[]): Promise<Candidate[]> {
+  const solos = await loadSolos();
+  const taken = new Set(solos.map((solo) => recordKey(solo.artist, solo.song)));
+  const seen = new Set<string>();
+  const candidates: Candidate[] = [];
+
+  for (const track of tracks) {
+    if (!usable(track)) continue;
+
+    let credited: Awaited<ReturnType<typeof trackArtists>> = [];
+    try {
+      credited = await trackArtists(track.id);
+    } catch {
+      continue;
+    }
+    const billed = credited.find((artist) => artist.ownerType !== "USER");
+    if (!billed) continue;
+
+    const artistName = canonical(leadName(billed.name), ARTISTS);
+    const song = canonical(cleanName(track.title), SONGS);
+    const key = recordKey(artistName, song);
+
+    if (taken.has(key) || seen.has(key)) continue;
+    seen.add(key);
+
+    candidates.push({
+      artist: artistName,
+      song,
+      isrc: track.isrc,
+      durationSec: track.durationSec,
+      popularity: track.popularity,
+      tidalArtistId: billed.id,
+      tidalTrackId: track.id,
+      knownSong: SONG_KEYS.has(recordKey("", song)),
+    });
+  }
+
+  return candidates;
 }

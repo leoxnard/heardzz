@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
 import { callerKey, take } from "@/lib/rate-limit";
-import { tidalAvailable, tidalUnavailableReason } from "@/lib/tidal";
 import {
   lastfmAvailable,
   lastfmUnavailableReason,
   parseLastfmUser,
   similarTracks,
-  topArtists,
   topTracks,
 } from "@/lib/lastfm";
 import { candidatesFromTracks } from "@/lib/lastfm-candidates";
-import { resolveArtistNames } from "@/lib/taste-text";
-import { tasteFromArtistIds } from "@/lib/taste";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -25,25 +21,6 @@ const READS = 8;
 const READ_WINDOW_MS = 60 * 60 * 1000;
 
 /**
- * How many of somebody's most-played artists to ask for, in the widened
- * round.
- *
- * Longer than the number actually used, deliberately. Only `SEEDS` of them
- * are ever placed against TIDAL — the rest are depth, there for when the
- * top of the list will not resolve, which is common enough for anybody
- * whose favourite act is obscure or spelled unusually.
- */
-const NAMES = 20;
-
-/**
- * Seeds a widened round is built from — the same handful
- * `/api/foryou/from-text` settles on. More is not a richer round:
- * everything past this point widens each seed to its neighbours anyway, so
- * a seventh favourite mostly buys another TIDAL crawl.
- */
-const SEEDS = 6;
-
-/**
  * Tunes to read for the easy round.
  *
  * Far more than a sitting can get through — the fetch is capped at forty
@@ -53,7 +30,7 @@ const SEEDS = 6;
  */
 const PLAYED = 200;
 
-type Mode = "known" | "nearby" | "wider";
+type Mode = "known" | "nearby";
 
 /**
  * Seeds the middle round widens from, and how far each one reaches.
@@ -68,7 +45,7 @@ const NEAR_REACH = 20;
 
 /**
  * Read a taste out of somebody's listening rather than out of a link, at
- * one of three difficulties.
+ * one of two difficulties.
  *
  * "known" plays the records they have actually played. Every tune is one
  * their own history says they have heard, most of them many times, so the
@@ -77,15 +54,15 @@ const NEAR_REACH = 20;
  * "nearby" plays what sits next to those records — one step out, still
  * anchored to a tune they chose, and reached without leaving Last.fm.
  *
- * "wider" is the hardest and the original: the history is read only for
- * *who* they like, that set is widened along TIDAL's similar-artist edges,
- * and the tunes come from the widened set. Far enough to be worth
- * guessing, and the same bargain `/api/foryou/plan` strikes with a pasted
- * playlist.
+ * There was a third, which widened the taste through MusicBrainz and
+ * TIDAL's similar-artist edges. It is gone. It took a minute where these
+ * take seconds, and what it bought for the minute was records its listener
+ * had no way to name — the far end of a crawl is not a harder round, it is
+ * an unanswerable one. Widening from a *link* still exists, where somebody
+ * has chosen the starting point on purpose: `/api/foryou/plan`.
  *
- * The first two never touch MusicBrainz or TIDAL — a Last.fm track states
- * the one thing the fetch depends on, its length — which is why they
- * answer in seconds where the third takes a minute.
+ * Neither of these touches MusicBrainz or TIDAL at all. A Last.fm track
+ * states the one thing the fetch depends on, its length.
  *
  * Nothing here downloads and nothing here touches the library.
  */
@@ -95,18 +72,7 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as { user?: string; mode?: string };
-  const mode: Mode = body.mode === "known" || body.mode === "nearby" ? body.mode : "wider";
-  /** Only the widened round leaves Last.fm for its records. */
-  const local = mode !== "wider";
-
-  /*
-   * Only the widened round needs TIDAL. Refusing the easy one for a
-   * credential it never reads would be a lie, and the easy one is exactly
-   * what somebody without TIDAL set up should still be able to play.
-   */
-  if (!local && !tidalAvailable()) {
-    return NextResponse.json({ error: tidalUnavailableReason() }, { status: 400 });
-  }
+  const mode: Mode = body.mode === "nearby" ? "nearby" : "known";
 
   const user = parseLastfmUser(body.user ?? "");
   if (!user) {
@@ -130,9 +96,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (mode === "known") return await fromPlayed(user);
-    if (mode === "nearby") return await fromNearby(user);
-    return await fromWidenedTaste(user);
+    return mode === "nearby" ? await fromNearby(user) : await fromPlayed(user);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not read that" },
@@ -251,43 +215,6 @@ async function fromNearby(user: string) {
     target: user,
     // Bounded the same way the easy round is: these calls were the supply.
     replan: false,
-  });
-}
-
-/** The hard round: their taste, widened to artists they did not name. */
-async function fromWidenedTaste(user: string) {
-  const names = await topArtists(user, NAMES);
-  if (names === null) return missing(user);
-  if (names.length === 0) return silent(user);
-
-  const resolved = await resolveArtistNames(names, SEEDS);
-  if (resolved.length === 0) {
-    return NextResponse.json(
-      { error: "TIDAL doesn't have anyone you listen to." },
-      { status: 400 },
-    );
-  }
-
-  const source = `${user} on Last.fm`;
-  const result = await tasteFromArtistIds(resolved.map((a) => a.id), source);
-  if (result.candidates.length === 0) {
-    return NextResponse.json(
-      { error: "Nothing well enough known came out of that taste." },
-      { status: 400 },
-    );
-  }
-
-  return NextResponse.json({
-    source,
-    reached: result.reached,
-    candidates: result.candidates,
-    /*
-     * Stands in for the pasted link a replan would otherwise carry, the
-     * same way `/api/foryou/from-text` does it — the ids are sent back
-     * rather than the username so a replan re-widens the taste already
-     * read, instead of paying MusicBrainz for the same names again.
-     */
-    target: resolved.map((a) => a.id).join(","),
   });
 }
 

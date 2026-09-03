@@ -16,11 +16,13 @@
    LASTFM_SHARED_SECRET is deliberately never read in this file: there is
    no callback URL, no redirect, and nobody has to log in to be read.
 
-   What comes out is names, not ids. Last.fm has never heard of TIDAL, so
-   the names leave here the same way a typed one does — through
-   `lib/taste-text.ts`, which places a name against TIDAL by way of
-   MusicBrainz — and the round is built from there by the same code that
-   builds one from a pasted link.
+   Nothing here ever meets TIDAL, and that is the point of it. A scrobble
+   already states the one thing a round is built on — how long the record
+   runs — so `lib/lastfm-candidates.ts` turns this straight into something
+   playable, with no name to resolve and no catalogue to search. There was
+   a reading that did go out through MusicBrainz to TIDAL, and took a
+   minute over it; it has been removed, along with the artist list it was
+   the only caller of.
    ------------------------------------------------------------------ */
 
 const API = "https://ws.audioscrobbler.com/2.0/";
@@ -353,40 +355,6 @@ export async function similarArtists(artist: string, limit: number): Promise<str
   for (const row of data?.similarartists?.artist ?? []) {
     const name = (row?.name ?? "").trim();
     if (usableName(name)) names.push(name);
-  }
-
-  return names;
-}
-
-interface TopArtistsResponse extends Fault {
-  topartists?: { artist?: { name?: string }[] };
-}
-
-/**
- * Somebody's most-played artists, most-played first.
- *
- * An empty list means the user is real but has never scrobbled anything,
- * which reads differently on screen and so is kept distinct from the miss.
- */
-export async function topArtists(user: string, limit: number): Promise<string[] | null> {
-  const data = await call<TopArtistsResponse>({
-    method: "user.gettopartists",
-    user,
-    period: PERIOD,
-    limit: String(limit),
-  });
-  if (data === null) return null;
-
-  const names: string[] = [];
-  const seen = new Set<string>();
-
-  for (const artist of data.topartists?.artist ?? []) {
-    const name = (artist?.name ?? "").trim();
-    if (!usableName(name)) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    names.push(name);
   }
 
   return names;

@@ -3,7 +3,7 @@ import { checkTools } from "@/scripts/extract.mjs";
 import { callerKey, take } from "@/lib/rate-limit";
 import { sweep } from "@/lib/ephemeral";
 import { parseTidalRef, tidalAvailable, tidalUnavailableReason } from "@/lib/tidal";
-import { tasteFrom } from "@/lib/taste";
+import { insideOf, tasteFrom } from "@/lib/taste";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -31,7 +31,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: tidalUnavailableReason() }, { status: 400 });
   }
 
-  const body = (await request.json()) as { target?: string };
+  const body = (await request.json()) as { target?: string; mode?: string };
+  /*
+   * Two readings of one link — see `lib/taste.ts`. "inside" plays what is
+   * on the list; anything else widens out from it, which is what every
+   * caller before this field existed meant, so that stays the default.
+   */
+  const inside = body.mode === "inside";
   const ref = parseTidalRef(body.target ?? "");
   if (!ref) {
     return NextResponse.json(
@@ -57,12 +63,15 @@ export async function POST(request: Request) {
     await checkTools();
     void sweep();
 
-    const taste = await tasteFrom(ref);
+    const taste = inside ? await insideOf(ref) : await tasteFrom(ref);
     if (taste.candidates.length === 0) {
       return NextResponse.json(
         {
-          error:
-            ref.kind === "playlist"
+          error: inside
+            ? ref.kind === "playlist"
+              ? "Nothing on that playlist can be played here. Is it public?"
+              : "TIDAL lists nothing playable for that."
+            : ref.kind === "playlist"
               ? "Nothing well enough known came out of that playlist. Is it public?"
               : "TIDAL lists nothing well enough known for that.",
         },
@@ -74,6 +83,12 @@ export async function POST(request: Request) {
       source: taste.source,
       reached: taste.reached,
       candidates: taste.candidates,
+      /*
+       * A list is finite, so one read is the whole supply — and a replan
+       * would come back here without the mode and quietly widen a sitting
+       * that had asked not to be widened.
+       */
+      ...(inside ? { replan: false } : {}),
     });
   } catch (error) {
     return NextResponse.json(
