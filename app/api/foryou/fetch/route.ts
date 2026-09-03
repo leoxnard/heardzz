@@ -3,7 +3,7 @@ import { cutFromSource, dropSource, searchCandidates } from "@/scripts/extract.m
 import { callerKey, take } from "@/lib/rate-limit";
 import { ephemeralId, toSolo, type Cut } from "@/lib/ephemeral";
 import { trackAlbum } from "@/lib/tidal";
-import { albumFor } from "@/lib/lastfm";
+import { albumFor, similarArtists } from "@/lib/lastfm";
 import { pickBest, searchPhrase, type SearchHit } from "@/lib/tidal-youtube";
 import type { Candidate } from "@/lib/tidal-candidates";
 
@@ -21,6 +21,9 @@ export const maxDuration = 300;
  */
 const ROUNDS = 40;
 const ROUND_WINDOW_MS = 60 * 60 * 1000;
+
+/** Decoys needed is four; the rest is slack so the draw can vary. */
+const NEAR_ARTISTS = 12;
 
 /**
  * Fetch one planned round and cut its opening.
@@ -110,7 +113,28 @@ export async function POST(request: Request) {
       album = undefined;
     }
 
-    return NextResponse.json({ solo: toSolo(candidate, youtubeId, cut, album) });
+    /*
+     * Who this artist sounds like, for the multiple-choice levels.
+     *
+     * A library record has this answer already — `lib/lexicon/neighbours.ts`
+     * holds it for every name in the index — but a for-you record can be
+     * anybody, and the game cannot go looking mid-round. So it is asked for
+     * here, next to the download, and travels on the solo.
+     *
+     * Failing costs the round its plausible decoys, not the round: the draw
+     * falls back to the lexicon the way it did before any of this existed.
+     */
+    let nearArtists: string[] | undefined;
+    try {
+      const near = await similarArtists(candidate.artist, NEAR_ARTISTS);
+      nearArtists = near.length > 0 ? near : undefined;
+    } catch {
+      nearArtists = undefined;
+    }
+
+    return NextResponse.json({
+      solo: { ...toSolo(candidate, youtubeId, cut, album), nearArtists },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not fetch that one" },

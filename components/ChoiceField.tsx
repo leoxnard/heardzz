@@ -7,11 +7,21 @@ import { t } from "@/lib/i18n";
 /* ------------------------------------------------------------------
    The same question, asked the easy way.
 
-   Five names, one of them right. The decoys come from the same lexicon the
-   typing field suggests from, so they are all plausible answers rather than
-   four obvious throwaways — and they are drawn with a seed taken from the
-   record's own id, so they stay put across a re-render and a reload. A set
+   Five names, one of them right. They are drawn with a seed taken from the
+   record's own id, so they stay put across a re-render and a reload — a set
    that reshuffled itself would leak the answer to anyone who looked twice.
+
+   Which four are wrong is the whole difficulty. Drawing them from the
+   lexicon at large made them all *valid* names but not *plausible* ones:
+   the answer to a Blakey record would sit beside a swing cornetist, a
+   fusion bassist and a free-jazz drummer, and three of those can be ruled
+   out without a note being played. So neighbours come first — artists
+   Last.fm says sound like the answer, resolved at build time into
+   `lib/lexicon/neighbours.ts` — and the lexicon only fills what is left.
+
+   Neighbours are never fetched here. The game does not touch the network
+   during a round, and the daily has to hand every player the same five
+   names; a live lookup would break both.
    ------------------------------------------------------------------ */
 
 const OPTION_COUNT = 5;
@@ -22,6 +32,12 @@ interface ChoiceFieldProps {
   seed: string;
   answer: string;
   pool: string[];
+  /**
+   * Names that belong beside the answer, best first. Taken before the pool
+   * is touched. Empty or absent is not a failure — the draw simply falls
+   * back to the pool, which is what it did before neighbours existed.
+   */
+  near?: string[];
   onPick: (value: string) => void;
   /** Values already tried and wrong, struck out rather than removed. */
   rejected: string[];
@@ -31,15 +47,25 @@ interface ChoiceFieldProps {
 }
 
 export function ChoiceField({
-  label, seed, answer, pool, onPick, rejected, solved, solvedLabel, disabled,
+  label, seed, answer, pool, near, onPick, rejected, solved, solvedLabel, disabled,
 }: ChoiceFieldProps) {
   const options = useMemo(() => {
-    const decoys = shuffle(
-      pool.filter((value) => value !== answer),
-      seedFrom(seed),
-    ).slice(0, OPTION_COUNT - 1);
+    const neighbours = (near ?? []).filter((value) => value !== answer);
+    const taken = new Set([answer, ...neighbours]);
+
+    /*
+     * Neighbours first, then the rest of the index behind them. Both halves
+     * are shuffled, so a record whose neighbour list is longer than four
+     * does not offer the same four every time — but the concatenation is
+     * ordered, so the pool is only reached for when the neighbours run out.
+     */
+    const decoys = [
+      ...shuffle(neighbours, seedFrom(seed)),
+      ...shuffle(pool.filter((value) => !taken.has(value)), seedFrom(`${seed}:rest`)),
+    ].slice(0, OPTION_COUNT - 1);
+
     return shuffle([answer, ...decoys], seedFrom(`${seed}:order`));
-  }, [pool, answer, seed]);
+  }, [pool, answer, seed, near]);
 
   if (solved) {
     return (

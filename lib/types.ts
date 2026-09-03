@@ -112,6 +112,17 @@ export interface Solo {
   isrc?: string;
   /** The TIDAL artist this came from, so the same seed can be walked again. */
   tidalArtistId?: string;
+
+  /**
+   * Artists who sound like this one, for the multiple-choice levels.
+   *
+   * Only set on a for-you round. A library record does not need it: its
+   * artist is in the lexicon, and `lib/lexicon/neighbours.ts` already holds
+   * that answer. A for-you record can be anybody, so the neighbours are
+   * fetched alongside the audio and travel with it — the alternative is a
+   * lookup mid-round, and the game does not touch the network then.
+   */
+  nearArtists?: string[];
 }
 
 /**

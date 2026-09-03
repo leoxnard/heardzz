@@ -15,6 +15,7 @@ import { formatSnippet, useSoloAudio } from "@/lib/audio";
 import { pickDaily, pickSequential, todayKey } from "@/lib/daily";
 import { t } from "@/lib/i18n";
 import { ARTISTS, SONGS, buildPool } from "@/lib/lexicon";
+import { NEIGHBOURS } from "@/lib/lexicon/neighbours";
 import { useConfig, useDailyRecord, usePracticeIndex, useStats } from "@/lib/storage";
 import {
   buildShare, createRound, giveUp, missesLeft, openFields,
@@ -50,6 +51,25 @@ const FIELDS = {
     answer: (solo: Solo) => solo.soloist || solo.artist,
   },
 } as const;
+
+/**
+ * Names that belong beside the answer, for the multiple-choice levels.
+ *
+ * Two sources, because there are two kinds of record here. A library record
+ * is one of the names the lexicon lists, and its neighbours were resolved
+ * at build time into `NEIGHBOURS`. A for-you record can be anybody at all —
+ * the whole point of that mode is records this site has never held — so its
+ * neighbours are fetched when the round is fetched and travel with it on
+ * the solo.
+ *
+ * Songs get none: "what else sounds like this tune" is not a question
+ * Last.fm answers in names the lexicon would recognise, so that field falls
+ * back to the pool the way it always did.
+ */
+function nearFor(solo: Solo, field: Field, answer: string): string[] | undefined {
+  if (field === "song") return undefined;
+  return solo.nearArtists ?? NEIGHBOURS[answer];
+}
 
 type Mode = "daily" | "practice";
 
@@ -506,6 +526,7 @@ export function Game({
                       seed={solo.id}
                       answer={answer}
                       pool={pools[field]}
+                      near={nearFor(solo, field, answer)}
                       onPick={(value) => guess([{ field, value }])}
                       rejected={rejected(field)}
                       solved={round.solved.includes(field)}
