@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { ReportPanel } from "./ReportPanel";
 import { Sleeve } from "./Sleeve";
 import { Board } from "./Board";
@@ -11,6 +10,7 @@ import { GuessField } from "./GuessField";
 import { ChoiceField } from "./ChoiceField";
 import { SettingsPanel } from "./SettingsPanel";
 import { StatsPanel } from "./StatsPanel";
+import { SiteHeader } from "./SiteHeader";
 import { formatSnippet, useSoloAudio } from "@/lib/audio";
 import { pickDaily, pickSequential, todayKey } from "@/lib/daily";
 import { t } from "@/lib/i18n";
@@ -617,50 +617,16 @@ function Header({
   catalog: string;
   onOpen: (panel: "settings" | "stats") => void;
 }) {
-  /*
-   * Which link is lit follows the address, not the mode. A sitting built
-   * from somebody's taste runs in practice mode, so keying off the mode
-   * would light "practice" while they are somewhere else entirely.
-   */
-  const path = usePathname();
-
   return (
-    <header className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-ink-edge px-6 py-4 sm:px-10 lg:px-14">
-      <Link href="/" className="flex items-center gap-3">
-        <span className="block h-4 w-4 bg-flame" aria-hidden="true" />
-        <span className="type-display text-xl text-paper">{t("brand")}</span>
-      </Link>
-
-      <nav className="flex gap-6">
-        <NavLink href="/" active={path === "/"}>{t("nav.daily")}</NavLink>
-        <NavLink href="/practice" active={path === "/practice"}>{t("nav.practice")}</NavLink>
-        <NavLink href="/for-you" active={path === "/for-you"}>{t("nav.forYou")}</NavLink>
-        <NavLink href="/suggest" active={path === "/suggest"}>{t("nav.suggest")}</NavLink>
-      </nav>
-
-      <div className="ml-auto flex items-center gap-5">
-        <span className="type-data hidden text-xs text-paper-faint sm:block">{catalog}</span>
-        <button type="button" onClick={() => onOpen("stats")} className="type-eyebrow text-paper-dim transition-colors hover:text-flame">
-          {t("nav.stats")}
-        </button>
-        <button type="button" onClick={() => onOpen("settings")} className="type-eyebrow text-paper-dim transition-colors hover:text-flame">
-          {t("nav.settings")}
-        </button>
-      </div>
-    </header>
-  );
-}
-
-function NavLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className={`type-eyebrow border-b-2 pb-[2px] transition-colors duration-150 ${
-        active ? "border-flame text-paper" : "border-transparent text-paper-dim hover:text-paper"
-      }`}
-    >
-      {children}
-    </Link>
+    <SiteHeader>
+      <span className="type-data hidden text-xs text-paper-faint sm:block">{catalog}</span>
+      <button type="button" onClick={() => onOpen("stats")} className="type-eyebrow text-paper-dim transition-colors hover:text-flame">
+        {t("nav.stats")}
+      </button>
+      <button type="button" onClick={() => onOpen("settings")} className="type-eyebrow text-paper-dim transition-colors hover:text-flame">
+        {t("nav.settings")}
+      </button>
+    </SiteHeader>
   );
 }
 
