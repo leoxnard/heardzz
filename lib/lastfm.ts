@@ -39,9 +39,13 @@ const PERIOD = "overall";
 
 /**
  * No queue here, unlike its neighbours in `lib/tidal.ts` and
- * `lib/musicbrainz.ts`. Reading a taste is exactly one call to this
- * service — every request after it is somebody else's rate limit to
- * worry about — so there is nothing to serialize.
+ * `lib/musicbrainz.ts`.
+ *
+ * Reading a taste is one call, and the widening below is a handful more,
+ * made one after another rather than at once. Last.fm asks for a few
+ * requests a second where MusicBrainz asks for one — an order of magnitude
+ * of headroom — so a dozen sequential calls never come close, and a
+ * limiter would be machinery guarding nothing.
  */
 export function lastfmAvailable(): boolean {
   return Boolean(process.env.LASTFM_API_KEY);
@@ -129,11 +133,18 @@ function usableName(name: string): boolean {
  * catalogue even when the listener's own history was right there. Last.fm
  * states it, so a scrobble is enough on its own.
  */
-export interface PlayedTrack {
+export interface FoundTrack {
   artist: string;
   song: string;
   durationSec: number;
-  playcount: number;
+  /**
+   * How strongly the tune belongs to whatever was asked for, on whatever
+   * scale that source counts in — a playcount from a history, a 0–1 match
+   * from a similarity, a rank from a tag. Never compared across sources;
+   * `candidatesFromTracks` scales it against the best in its own list, so
+   * only the ordering within one answer has to mean anything.
+   */
+  weight: number;
 }
 
 interface TopTracksResponse extends Fault {
@@ -159,7 +170,7 @@ interface TopTracksResponse extends Fault {
  * video, and a candidate that cannot be checked is not worth a download.
  * `null` for a missing user, exactly as `topArtists` does it.
  */
-export async function topTracks(user: string, limit: number): Promise<PlayedTrack[] | null> {
+export async function topTracks(user: string, limit: number): Promise<FoundTrack[] | null> {
   const data = await call<TopTracksResponse>({
     method: "user.gettoptracks",
     user,
@@ -168,7 +179,7 @@ export async function topTracks(user: string, limit: number): Promise<PlayedTrac
   });
   if (data === null) return null;
 
-  const played: PlayedTrack[] = [];
+  const played: FoundTrack[] = [];
 
   for (const track of data.toptracks?.track ?? []) {
     const song = (track?.name ?? "").trim();
@@ -180,11 +191,159 @@ export async function topTracks(user: string, limit: number): Promise<PlayedTrac
       artist,
       song,
       durationSec,
-      playcount: Number(track?.playcount ?? 0) || 0,
+      weight: Number(track?.playcount ?? 0) || 0,
     });
   }
 
   return played;
+}
+
+/**
+ * The shape both widening calls answer in: a list of tracks, each naming
+ * its own artist and stating its own length.
+ *
+ * That last part is what makes these two worth having and
+ * `artist.getTopTracks` not. Every road to a round ends at the duration
+ * check in `judge`, and an endpoint that omits the length turns one call
+ * into one call per track.
+ */
+interface TrackListResponse extends Fault {
+  [key: string]: unknown;
+}
+
+function readTrackList(
+  block: { track?: unknown } | undefined,
+  weigh: (raw: Record<string, unknown>, index: number) => number,
+): FoundTrack[] {
+  const rows = Array.isArray(block?.track) ? (block.track as Record<string, unknown>[]) : [];
+  const found: FoundTrack[] = [];
+
+  rows.forEach((row, index) => {
+    const song = String(row?.name ?? "").trim();
+    const artist = String((row?.artist as { name?: string })?.name ?? "").trim();
+    const durationSec = Number(row?.duration ?? 0);
+    if (!song || !usableName(artist) || !durationSec) return;
+    found.push({ artist, song, durationSec, weight: weigh(row, index) });
+  });
+
+  return found;
+}
+
+/**
+ * Tunes Last.fm thinks sit next to this one.
+ *
+ * The middle difficulty is built out of this. Widening by artist the way
+ * TIDAL does costs a name-to-id resolution before it can start, and then a
+ * second call per artist to find anything with a length on it; this widens
+ * by tune, arrives playable, and carries a `match` saying how far it went.
+ *
+ * The near end of that scale is mostly the same artist again — asking for
+ * neighbours of "Giant Steps" answers with two more Coltrane sides before
+ * it answers with anybody else — so the caller drops the seed's own artist
+ * rather than trusting the score alone.
+ */
+export async function similarTracks(
+  artist: string,
+  song: string,
+  limit: number,
+): Promise<FoundTrack[]> {
+  const data = await call<TrackListResponse>({
+    method: "track.getsimilar",
+    artist,
+    track: song,
+    limit: String(limit),
+  });
+  const block = data?.similartracks as { track?: unknown } | undefined;
+  return readTrackList(block, (row) => Number(row?.match ?? 0) || 0);
+}
+
+/**
+ * The best-known records under a tag — "hard bop", "bebop", "cool jazz".
+ *
+ * The one door here that needs nobody's account and nobody's playlist. A
+ * tag Last.fm has never heard of is not an error, it is an empty list,
+ * which is exactly the signal a caller wants for "that was not a genre".
+ *
+ * Weighted by rank, because the endpoint states no score of its own. The
+ * list arrives best-known first and that ordering is the whole signal.
+ */
+export async function tagTracks(tag: string, limit: number): Promise<FoundTrack[]> {
+  const data = await call<TrackListResponse>({
+    method: "tag.gettoptracks",
+    tag,
+    limit: String(limit),
+  });
+  const block = data?.tracks as { track?: unknown } | undefined;
+  return readTrackList(block, (_row, index) => limit - index);
+}
+
+interface TrackInfoResponse extends Fault {
+  track?: { album?: { title?: string } };
+}
+
+/**
+ * The album a tune sits on, for a reveal that has something on it.
+ *
+ * Stands in for `trackAlbum` in `lib/tidal.ts` wherever a round was built
+ * without TIDAL — those candidates carry no track id, so the TIDAL call
+ * has nothing to ask about and the sleeve came back blank.
+ *
+ * Never throws. Same bargain the TIDAL one strikes: failing costs the
+ * sleeve a line, not the round.
+ */
+export async function albumFor(artist: string, song: string): Promise<string | null> {
+  try {
+    const data = await call<TrackInfoResponse>({ method: "track.getinfo", artist, track: song });
+    return data?.track?.album?.title?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+interface UserInfoResponse extends Fault {
+  user?: { playcount?: string };
+}
+
+/**
+ * How much history there is, before a sitting is spent finding out there
+ * is none.
+ *
+ * `null` for no such user. Cheap enough to ask first, and it turns "that
+ * came back empty" into something the screen can actually explain.
+ */
+export async function scrobbleCount(user: string): Promise<number | null> {
+  const data = await call<UserInfoResponse>({ method: "user.getinfo", user });
+  if (data === null) return null;
+  return Number(data.user?.playcount ?? 0) || 0;
+}
+
+interface SimilarArtistsResponse extends Fault {
+  similarartists?: { artist?: { name?: string }[] };
+}
+
+/**
+ * Who Last.fm thinks sounds like this artist, closest first.
+ *
+ * Not used to build rounds — `artist.getTopTracks` states no duration, so
+ * widening this way costs a call per tune. It is used to make a round
+ * harder: the five names offered on the easy levels were drawn at random
+ * from the whole index, which puts a swing trumpeter beside a fusion
+ * bassist and answers itself. Neighbours make four decoys that all belong.
+ */
+export async function similarArtists(artist: string, limit: number): Promise<string[]> {
+  const data = await call<SimilarArtistsResponse>({
+    method: "artist.getsimilar",
+    artist,
+    limit: String(limit),
+  });
+  const names: string[] = [];
+
+  for (const row of data?.similarartists?.artist ?? []) {
+    const name = (row?.name ?? "").trim();
+    if (usableName(name)) names.push(name);
+  }
+
+  return names;
 }
 
 interface TopArtistsResponse extends Fault {

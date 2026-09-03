@@ -3,6 +3,7 @@ import { cutFromSource, dropSource, searchCandidates } from "@/scripts/extract.m
 import { callerKey, take } from "@/lib/rate-limit";
 import { ephemeralId, toSolo, type Cut } from "@/lib/ephemeral";
 import { trackAlbum } from "@/lib/tidal";
+import { albumFor } from "@/lib/lastfm";
 import { pickBest, searchPhrase, type SearchHit } from "@/lib/tidal-youtube";
 import type { Candidate } from "@/lib/tidal-candidates";
 
@@ -89,11 +90,22 @@ export async function POST(request: Request) {
 
     await dropSource(youtubeId);
 
-    // One extra call, next to a download that already took seconds. Failing
-    // it costs the sleeve a line, not the round.
+    /*
+     * One extra call, next to a download that already took seconds. Failing
+     * it costs the sleeve a line, not the round.
+     *
+     * Which service is asked depends on what built the candidate. A round
+     * widened out of TIDAL carries a track id and TIDAL knows the album; a
+     * round built off Last.fm carries no id at all, so that call had
+     * nothing to ask about and the sleeve came back blank on every easy
+     * round. Last.fm answers the same question from the artist and title
+     * it does have.
+     */
     let album: string | undefined;
     try {
-      album = (await trackAlbum(candidate.tidalTrackId))?.title;
+      album = candidate.tidalTrackId
+        ? (await trackAlbum(candidate.tidalTrackId))?.title
+        : (await albumFor(candidate.artist, candidate.song)) ?? undefined;
     } catch {
       album = undefined;
     }

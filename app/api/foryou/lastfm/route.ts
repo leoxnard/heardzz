@@ -5,10 +5,11 @@ import {
   lastfmAvailable,
   lastfmUnavailableReason,
   parseLastfmUser,
+  similarTracks,
   topArtists,
   topTracks,
 } from "@/lib/lastfm";
-import { candidatesFromPlayed } from "@/lib/lastfm-candidates";
+import { candidatesFromTracks } from "@/lib/lastfm-candidates";
 import { resolveArtistNames } from "@/lib/taste-text";
 import { tasteFromArtistIds } from "@/lib/taste";
 
@@ -52,21 +53,39 @@ const SEEDS = 6;
  */
 const PLAYED = 200;
 
+type Mode = "known" | "nearby" | "wider";
+
+/**
+ * Seeds the middle round widens from, and how far each one reaches.
+ *
+ * Eight rather than the two hundred the easy round reads: each seed is its
+ * own call, and a listener's top eight already spans whatever they
+ * actually listen to. Twenty back from each is enough that dropping the
+ * seed's own artist still leaves a round.
+ */
+const NEAR_SEEDS = 8;
+const NEAR_REACH = 20;
+
 /**
  * Read a taste out of somebody's listening rather than out of a link, at
- * one of two difficulties.
+ * one of three difficulties.
  *
  * "known" plays the records they have actually played. Every tune is one
  * their own history says they have heard, most of them many times, so the
- * round is winnable by construction — and it is the quick one, because a
- * scrobble already carries the length the fetch needs and so never touches
- * MusicBrainz or TIDAL at all.
+ * round is winnable by construction.
  *
- * "wider" is the harder game and the original one: the history is read
- * only for *who* they like, that set is widened along TIDAL's
- * similar-artist edges, and the tunes come from the widened set. Near
- * enough to be fair, far enough to be worth guessing — and the same
- * bargain `/api/foryou/plan` strikes with a pasted playlist.
+ * "nearby" plays what sits next to those records — one step out, still
+ * anchored to a tune they chose, and reached without leaving Last.fm.
+ *
+ * "wider" is the hardest and the original: the history is read only for
+ * *who* they like, that set is widened along TIDAL's similar-artist edges,
+ * and the tunes come from the widened set. Far enough to be worth
+ * guessing, and the same bargain `/api/foryou/plan` strikes with a pasted
+ * playlist.
+ *
+ * The first two never touch MusicBrainz or TIDAL — a Last.fm track states
+ * the one thing the fetch depends on, its length — which is why they
+ * answer in seconds where the third takes a minute.
  *
  * Nothing here downloads and nothing here touches the library.
  */
@@ -76,14 +95,16 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as { user?: string; mode?: string };
-  const known = body.mode === "known";
+  const mode: Mode = body.mode === "known" || body.mode === "nearby" ? body.mode : "wider";
+  /** Only the widened round leaves Last.fm for its records. */
+  const local = mode !== "wider";
 
   /*
    * Only the widened round needs TIDAL. Refusing the easy one for a
    * credential it never reads would be a lie, and the easy one is exactly
    * what somebody without TIDAL set up should still be able to play.
    */
-  if (!known && !tidalAvailable()) {
+  if (!local && !tidalAvailable()) {
     return NextResponse.json({ error: tidalUnavailableReason() }, { status: 400 });
   }
 
@@ -109,7 +130,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    return known ? await fromPlayed(user) : await fromWidenedTaste(user);
+    if (mode === "known") return await fromPlayed(user);
+    if (mode === "nearby") return await fromNearby(user);
+    return await fromWidenedTaste(user);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not read that" },
@@ -124,7 +147,7 @@ async function fromPlayed(user: string) {
   if (played === null) return missing(user);
   if (played.length === 0) return silent(user);
 
-  const { candidates } = await candidatesFromPlayed(played);
+  const { candidates } = await candidatesFromTracks(played);
   if (candidates.length === 0) {
     return NextResponse.json(
       { error: "Everything you play is already in the library here." },
@@ -153,6 +176,80 @@ async function fromPlayed(user: string) {
      * history, and asking `/api/foryou/plan` — which is where a replan
      * goes — a username it cannot parse would spend a sitting on a 400.
      */
+    replan: false,
+  });
+}
+
+/**
+ * The middle round: not their records, but the ones sitting next to them.
+ *
+ * Widened by tune rather than by artist, which is what makes it quick.
+ * Asking TIDAL for neighbours costs a name-to-id resolution before it can
+ * start; asking Last.fm what sits next to a tune answers with tunes that
+ * already state their own length, so the reply is playable as it stands.
+ *
+ * The seed's own artist is dropped on the way through. Neighbours of a
+ * record are mostly other records by the same act — the top two answers
+ * for "Giant Steps" are more Coltrane — and a round of those would be the
+ * easy one wearing a different name.
+ */
+async function fromNearby(user: string) {
+  /*
+   * The same two hundred the easy round reads, for both jobs at once.
+   *
+   * The top few are the seeds. All two hundred are the exclusion list, and
+   * that second job is what the mode rests on: filtering only against the
+   * seeds left it handing back AC/DC to a listener who plays AC/DC
+   * constantly — it simply was not in his top eight. Reading the exact
+   * list "known" would have played is what makes "nearby" mean records he
+   * has *not* played, and it costs nothing extra.
+   */
+  const played = await topTracks(user, PLAYED);
+  if (played === null) return missing(user);
+  if (played.length === 0) return silent(user);
+
+  const own = new Set(played.map((track) => track.artist.toLowerCase()));
+  const near = [];
+
+  /*
+   * One after another rather than all at once. Eight calls is nothing to
+   * Last.fm, but firing them together is the shape that gets an app
+   * throttled, and the whole set still lands in about two seconds.
+   */
+  for (const seed of played.slice(0, NEAR_SEEDS)) {
+    let found = [];
+    try {
+      found = await similarTracks(seed.artist, seed.song, NEAR_REACH);
+    } catch {
+      continue;
+    }
+    for (const track of found) {
+      if (own.has(track.artist.toLowerCase())) continue;
+      near.push(track);
+    }
+  }
+
+  if (near.length === 0) {
+    return NextResponse.json(
+      { error: "Last.fm knows nothing next to what you play." },
+      { status: 400 },
+    );
+  }
+
+  const { candidates } = await candidatesFromTracks(near);
+  if (candidates.length === 0) {
+    return NextResponse.json(
+      { error: "Everything next to what you play is already in the library here." },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({
+    source: `records next to ${user}'s`,
+    reached: Array.from(new Set(candidates.map((c) => c.artist))).slice(0, 12),
+    candidates,
+    target: user,
+    // Bounded the same way the easy round is: these calls were the supply.
     replan: false,
   });
 }

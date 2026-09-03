@@ -314,6 +314,28 @@ export function ForYou() {
   }
 
   /**
+   * The same words, taken as a genre rather than as a description.
+   *
+   * The door above hands them to a model, which names artists known for the
+   * style, each of which is then placed against TIDAL — right for "Michael
+   * Brecker only, but not the fusion", and a great deal of machinery for
+   * the word "bebop". Last.fm already knows what a tag is best known for,
+   * and answers in about a second.
+   */
+  function startFromTag() {
+    const trimmed = words.trim();
+    void beginSession(
+      () =>
+        fetch("/api/foryou/tag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tag: trimmed }),
+        }),
+      "",
+    );
+  }
+
+  /**
    * Same sitting again, built from what somebody has actually listened to,
    * at whichever of the two difficulties they picked.
    *
@@ -326,7 +348,7 @@ export function ForYou() {
    * `target` — and the easy one brings its whole supply at once, which is
    * what `replan: false` in that response settles.
    */
-  function startFromLastfm(mode: "known" | "wider") {
+  function startFromLastfm(mode: "known" | "nearby" | "wider") {
     const trimmed = listener.trim();
     void beginSession(
       () =>
@@ -491,6 +513,7 @@ export function ForYou() {
           onSubmit={startFromWords}
           busy={busy}
           label={label}
+          alternates={[{ label: "Just the genre", onSubmit: startFromTag }]}
         />
 
         <Door
@@ -517,7 +540,10 @@ export function ForYou() {
           label={label}
           lowercase
           submitLabel="Records I know"
-          alternate={{ label: "Go wider", onSubmit: () => startFromLastfm("wider") }}
+          alternates={[
+            { label: "One step out", onSubmit: () => startFromLastfm("nearby") },
+            { label: "Go wider", onSubmit: () => startFromLastfm("wider") },
+          ]}
         />
       </div>
 
@@ -550,7 +576,7 @@ function Door({
   label,
   lowercase = false,
   submitLabel,
-  alternate,
+  alternates,
 }: {
   index: string;
   accent: string;
@@ -571,11 +597,11 @@ function Door({
    */
   submitLabel?: string;
   /**
-   * A second way through the same door. The Last.fm one has two
-   * difficulties over one username, and a door per difficulty would have
-   * meant asking for that username twice.
+   * Further ways through the same door, after the primary. The Last.fm one
+   * runs three difficulties off one username, and a door per difficulty
+   * would have meant asking for that username three times.
    */
-  alternate?: { label: string; onSubmit: () => void };
+  alternates?: { label: string; onSubmit: () => void }[];
 }) {
   const filled = value.trim().length > 0;
   const primary = busy ? label : (submitLabel ?? label);
@@ -628,16 +654,18 @@ function Door({
           {primary} &rarr;
         </button>
 
-        {alternate && !busy && (
-          <button
-            type="button"
-            onClick={alternate.onSubmit}
-            disabled={!filled}
-            className="type-eyebrow self-start text-xs text-paper-faint underline decoration-ink-edge underline-offset-4 transition-colors hover:text-paper disabled:opacity-40"
-          >
-            {alternate.label}
-          </button>
-        )}
+        {!busy &&
+          (alternates ?? []).map((choice) => (
+            <button
+              key={choice.label}
+              type="button"
+              onClick={choice.onSubmit}
+              disabled={!filled}
+              className="type-eyebrow self-start text-xs text-paper-faint underline decoration-ink-edge underline-offset-4 transition-colors hover:text-paper disabled:opacity-40"
+            >
+              {choice.label}
+            </button>
+          ))}
       </div>
     </section>
   );

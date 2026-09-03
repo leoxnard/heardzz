@@ -3,24 +3,31 @@ import { shuffle } from "./daily";
 import { recordKey } from "./duplicates";
 import { canonical, ARTISTS, SONGS } from "./lexicon";
 import { loadSolos } from "./library";
-import type { PlayedTrack } from "./lastfm";
+import type { FoundTrack } from "./lastfm";
 import type { Candidate } from "./tidal-candidates";
 
 /* ------------------------------------------------------------------
-   From what somebody has played to a round they can actually win.
+   From a list of tunes to a round, without TIDAL in the middle.
 
    The other way of building a round — `lib/tidal-candidates.ts` — starts
-   from an artist and asks TIDAL what they recorded. This one starts from
-   the listener and asks nothing: the tunes are the ones already in their
-   history, so the question is not "what might they know" but "what do we
-   know they have played, and how often".
+   from an artist and asks TIDAL what they recorded, which costs a
+   name-to-id resolution before it can start. Everything here arrives
+   already naming its own artist and stating its own length, so there is
+   nothing to resolve and nothing to look up.
 
-   That is the whole difference between the two difficulties. Widening a
-   taste finds records worth discovering and regularly finds records
-   nobody could name — the floors in `lib/taste.ts` exist because a
-   sitting produced "The Blue Rubatos — You Are" at 0.27 popularity. A
-   scrobble count cannot produce that: a tune played sixty times is one
-   this listener can name, whatever the rest of the world thinks of it.
+   Three sources land in this one function because they answer in the same
+   shape, and they are the three difficulties:
+
+   what somebody has played, which is the easy round — a tune played sixty
+   times is one they can name, whatever the rest of the world thinks of
+   it; what sits next to what they play (`track.getSimilar`), which is the
+   middle one; and what a tag is best known for (`tag.getTopTracks`),
+   which needs no account at all.
+
+   The floors in `lib/taste.ts` exist because widening a taste four hops
+   found "The Blue Rubatos — You Are" at 0.27 popularity. None of these
+   three can wander that far: each one is anchored to something a person
+   actually named or actually played.
 
    Everything else is the same treatment the TIDAL side gives its
    candidates, and for the same reasons: the paperwork comes off the
@@ -30,22 +37,22 @@ import type { Candidate } from "./tidal-candidates";
 
 const SONG_KEYS = new Set(SONGS.map((song) => recordKey("", song)));
 
-export interface PlayedReport {
+export interface TrackReport {
   candidates: Candidate[];
   /** Why the rest went, so a thin round is explainable rather than mysterious. */
   skipped: { alreadyInLibrary: number; duplicate: number };
 }
 
 /**
- * Scrobbles to candidates, in an order that is not the same twice.
+ * Tunes to candidates, in an order that is not the same twice.
  *
- * Playcount decides who gets in — the list arrives most-played first and is
- * cut at whatever the caller asked for — but not what order they are played
- * in. Taking them in playcount order would make one profile produce one
- * sitting for ever, so the survivors are shuffled, exactly as
- * `tasteFromArtistIds` shuffles the artists it reaches.
+ * Weight decides who gets in — the list arrives strongest first and is cut
+ * at whatever the caller asked for — but not what order they are played in.
+ * Taking them in weight order would make one profile produce one sitting
+ * for ever, so the survivors are shuffled, exactly as `tasteFromArtistIds`
+ * shuffles the artists it reaches.
  */
-export async function candidatesFromPlayed(played: PlayedTrack[]): Promise<PlayedReport> {
+export async function candidatesFromTracks(played: FoundTrack[]): Promise<TrackReport> {
   const solos = await loadSolos();
   const taken = new Set(solos.map((solo) => recordKey(solo.artist, solo.song)));
   const seen = new Set<string>();
@@ -58,7 +65,7 @@ export async function candidatesFromPlayed(played: PlayedTrack[]): Promise<Playe
    * same thing for somebody with a hundred thousand scrobbles and somebody
    * with two hundred.
    */
-  const most = Math.max(...played.map((track) => track.playcount), 1);
+  const most = Math.max(...played.map((track) => track.weight), 1);
 
   for (const track of played) {
     /*
@@ -113,7 +120,7 @@ export async function candidatesFromPlayed(played: PlayedTrack[]): Promise<Playe
        * does. That is the axis the easy round is built on, and the reason
        * it does not need the popularity floors the widened round does.
        */
-      popularity: track.playcount / most,
+      popularity: track.weight / most,
       knownSong: SONG_KEYS.has(recordKey("", song)),
     });
   }
