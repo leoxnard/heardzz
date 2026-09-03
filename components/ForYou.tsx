@@ -487,6 +487,7 @@ export function ForYou() {
           onSubmit={start}
           busy={busy}
           label={label}
+          submitHint="Artists from the playlist, plus ones who sound like them"
         />
 
         <Door
@@ -513,7 +514,14 @@ export function ForYou() {
           onSubmit={startFromWords}
           busy={busy}
           label={label}
-          alternates={[{ label: "Just the genre", onSubmit: startFromTag }]}
+          submitHint="A model reads artists out of it, then widens from those"
+          alternates={[
+            {
+              label: "Just the genre",
+              hint: "Skip the model — the best-known records under that tag",
+              onSubmit: startFromTag,
+            },
+          ]}
         />
 
         <Door
@@ -540,9 +548,18 @@ export function ForYou() {
           label={label}
           lowercase
           submitLabel="Records I know"
+          submitHint="Easiest — only tunes your own history says you have played"
           alternates={[
-            { label: "One step out", onSubmit: () => startFromLastfm("nearby") },
-            { label: "Go wider", onSubmit: () => startFromLastfm("wider") },
+            {
+              label: "One step out",
+              hint: "Harder — records next to yours, which you have not played",
+              onSubmit: () => startFromLastfm("nearby"),
+            },
+            {
+              label: "Go wider",
+              hint: "Hardest — artists you have never listened to at all",
+              onSubmit: () => startFromLastfm("wider"),
+            },
           ]}
         />
       </div>
@@ -576,6 +593,7 @@ function Door({
   label,
   lowercase = false,
   submitLabel,
+  submitHint,
   alternates,
 }: {
   index: string;
@@ -596,12 +614,14 @@ function Door({
    * sitting is being read, the shared progress label says the useful thing.
    */
   submitLabel?: string;
+  /** One line under the primary saying what it will actually play. */
+  submitHint?: string;
   /**
    * Further ways through the same door, after the primary. The Last.fm one
    * runs three difficulties off one username, and a door per difficulty
    * would have meant asking for that username three times.
    */
-  alternates?: { label: string; onSubmit: () => void }[];
+  alternates?: { label: string; hint?: string; onSubmit: () => void }[];
 }) {
   const filled = value.trim().length > 0;
   const primary = busy ? label : (submitLabel ?? label);
@@ -638,34 +658,51 @@ function Door({
       />
 
       {/*
-        Two buttons rather than a toggle above the field: the difficulty is
-        the last decision made here, and a toggle would have it set silently
-        before the username is even typed. Naming both as verbs makes the
-        choice the click itself.
-      */}
-      <div className="mt-5 flex flex-wrap items-baseline gap-x-5 gap-y-2">
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={busy || !filled}
-          style={{ color: filled && !busy ? accent : undefined }}
-          className="type-eyebrow self-start text-xs text-paper-faint transition-colors disabled:opacity-40"
-        >
-          {primary} &rarr;
-        </button>
+        One box per way through, stacked, rather than a row of bare words.
 
-        {!busy &&
-          (alternates ?? []).map((choice) => (
-            <button
-              key={choice.label}
-              type="button"
-              onClick={choice.onSubmit}
-              disabled={!filled}
-              className="type-eyebrow self-start text-xs text-paper-faint underline decoration-ink-edge underline-offset-4 transition-colors hover:text-paper disabled:opacity-40"
-            >
-              {choice.label}
-            </button>
-          ))}
+        The first version set them as plain text — the primary in the
+        accent, the rest underlined — and a reader could not tell they were
+        buttons at all. Somebody looking for "records I know" reported not
+        being able to press it, took the underlined word beside it for the
+        mode he wanted, and played the wrong difficulty without ever
+        knowing there had been a choice. Boxes say "press me" without
+        having to be told, and stacking them full width makes the target
+        the whole row rather than a few characters.
+
+        Each carries a line saying what it actually does, because the names
+        alone are the thing that misled: "one step out" from what is only
+        obvious once you already know.
+      */}
+      <div className="mt-6 flex flex-col gap-2">
+        {[
+          { label: primary, hint: submitHint, onSubmit, lead: true },
+          ...(alternates ?? []).map((choice) => ({ ...choice, lead: false })),
+        ].map((choice) => (
+          <button
+            key={choice.label}
+            type="button"
+            onClick={choice.onSubmit}
+            disabled={busy || !filled}
+            style={
+              choice.lead && filled && !busy
+                ? { borderColor: accent, color: accent }
+                : undefined
+            }
+            className="group/act flex w-full items-center justify-between gap-3 border border-ink-edge px-4 py-3 text-left transition-colors enabled:hover:border-paper-faint disabled:opacity-40"
+          >
+            <span className="min-w-0">
+              <span className="type-eyebrow block text-xs text-paper">{choice.label}</span>
+              {choice.hint && (
+                <span className="type-body mt-1 block text-xs text-paper-faint">
+                  {choice.hint}
+                </span>
+              )}
+            </span>
+            <span aria-hidden className="type-eyebrow shrink-0 text-xs">
+              &rarr;
+            </span>
+          </button>
+        ))}
       </div>
     </section>
   );
