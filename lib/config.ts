@@ -126,9 +126,24 @@ export const DEFAULT_CONFIG: GameConfig = {
  * One-click ladders, independent of level. Named after where they open
  * rather than after a kind of listener: the levels own those names now, and
  * two "Connoisseur" buttons in one panel is one too many. What separates
- * these three is the first rung anyway.
+ * them is the first rung anyway.
  */
 export const LADDER_PRESETS: { id: string; label: string; ladderMs: number[] }[] = [
+  /*
+   * For a round of records you already know.
+   *
+   * The easiest for-you door plays tunes the listener's own history says
+   * they have played, often hundreds of times, and against those the
+   * ordinary ladder hands over the answer before it has finished asking —
+   * twenty seconds of a record you know is not a question. This one tops
+   * out where that one opens, which turns the round from "have you heard
+   * this" into "how fast".
+   *
+   * A preset rather than something that mode switches to by itself: which
+   * ladder suits a sitting is the listener's call, and a game that quietly
+   * rewrites the settings is a game you cannot trust the settings of.
+   */
+  { id: "reflex", label: "Opens at 0.25s", ladderMs: [250, 500, 1000, 2000, 5000] },
   { id: "connoisseur", label: "Opens at 0.5s", ladderMs: [500, 2000, 5000, 10000, 20000] },
   { id: "standard", label: "Opens at 1s", ladderMs: [1000, 2000, 4000, 7000, 11000, 16000] },
   { id: "easy", label: "Opens at 3s", ladderMs: [3000, 6000, 9000, 13000, 16000, 20000] },

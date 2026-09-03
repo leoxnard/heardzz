@@ -202,8 +202,14 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
 /** "0.1 s", "2 s", "20 s" — no trailing zeroes, no millisecond noise. */
 export function formatSnippet(ms: number): string {
   if (ms < 1000) {
+    /*
+     * Two places, then trimmed back to whatever the number actually needs.
+     * One place was enough while every rung under a second was a half or a
+     * tenth; the quarter-second ladder the easy for-you round runs on would
+     * have been rounded to "0.3 s", which is a rung that does not exist.
+     */
     const seconds = ms / 1000;
-    return `${seconds.toFixed(seconds < 0.1 ? 2 : 1).replace(/\.0$/, "")} s`;
+    return `${seconds.toFixed(2).replace(/0$/, "").replace(/\.0$/, "")} s`;
   }
   const seconds = ms / 1000;
   return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} s`;
