@@ -1,6 +1,7 @@
 import type { Attempt, Field, RoundState, Solo, Stats } from "./types";
 import { activeFields, type GameConfig } from "./config";
 import { artistMatches, songMatches } from "./lexicon";
+import { sameArtist } from "./duplicates";
 import { formatSnippet } from "./audio";
 
 export function createRound(soloId: string): RoundState {
@@ -54,13 +55,25 @@ export function openFields(state: RoundState, config: GameConfig): Field[] {
 function matches(field: Field, guess: string, solo: Solo): boolean {
   switch (field) {
     case "artist":
-      return artistMatches(guess, solo.artist);
+      /*
+       * Two questions, because one of them was letting real answers
+       * through and the other was not. `artistMatches` compares the names
+       * as written, with a typo budget and the nickname table — right for
+       * "Trane", and no help at all when the record is billed to an
+       * ensemble. `sameArtist` folds both sides the way the library folds
+       * them when deciding two records are the same, which is exactly the
+       * question being asked: is this the same act?
+       */
+      return artistMatches(guess, solo.artist) || sameArtist(guess, solo.artist);
     case "song":
       return songMatches(guess, solo.song);
     case "soloist":
       // Same nickname table and typo budget as the artist: a soloist is a
       // person's name too, and Trane is Trane in either box.
-      return artistMatches(guess, solo.soloist || solo.artist);
+      return (
+        artistMatches(guess, solo.soloist || solo.artist) ||
+        sameArtist(guess, solo.soloist || solo.artist)
+      );
   }
 }
 

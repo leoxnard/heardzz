@@ -1,5 +1,5 @@
 import { cleanName } from "./clean";
-import { ARTIST_ALIASES, normalize } from "./lexicon";
+import { ARTIST_ALIASES, isMatch, normalize } from "./lexicon";
 
 /* ------------------------------------------------------------------
    Is this record already here?
@@ -31,6 +31,16 @@ const JOINT = /\s*(?:[&,/]|\bwith\b|\bfeat\.?\b|\bfeaturing\b|\band his\b|\band 
  */
 const ENSEMBLE =
   /\b(orchestra|big band|band|quintet|quartet|quintette|trio|duo|sextet|septet|octet|nonet|ensemble|group|combo|all stars?|allstars?|jazz messengers)\b/g;
+
+/**
+ * Suffixes that trail a name without changing whose it is.
+ *
+ * Only at the end, so nothing is taken out of the middle of a name. TIDAL
+ * and Last.fm disagree about the comma in "Grover Washington, Jr." and
+ * about whether the suffix is there at all, and a player types whichever
+ * they remember — three spellings of one man that all have to land on him.
+ */
+const HONORIFIC = /\s+(jr|sr|ii|iii|iv)$/;
 
 /**
  * Everything after these, when it trails a title, describes the transfer
@@ -89,8 +99,34 @@ export function artistKey(artist: string): string {
   const folded = normalize(lead);
   const canonical = CANONICAL.get(folded) ?? CANONICAL.get(fold(artist));
   const base = canonical ? normalize(canonical) : folded;
-  const stripped = base.replace(ENSEMBLE, " ").replace(/\s+/g, " ").trim();
+  const stripped = base
+    .replace(ENSEMBLE, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(HONORIFIC, "");
   return stripped || base;
+}
+
+/**
+ * Two names for the same act, as far as the library is concerned.
+ *
+ * The same fold that decides whether two records are duplicates, offered to
+ * whoever is checking an answer. `isMatch` in the lexicon compares the
+ * names as written, which is right for a person's name and wrong the moment
+ * a record is billed to an ensemble: "Louis Armstrong" and "Louis Armstrong
+ * And His Orchestra" are one artist to this library and two strings to that
+ * comparison.
+ *
+ * The two are then compared through `isMatch` rather than for equality, so
+ * the typo budget survives the fold. Someone who drops a letter from
+ * "Armstrong" has still named the act, and being told otherwise because the
+ * record happened to be billed to an orchestra is the same unfairness this
+ * function exists to undo.
+ */
+export function sameArtist(a: string, b: string): boolean {
+  const left = artistKey(a);
+  const right = artistKey(b);
+  return Boolean(left) && Boolean(right) && isMatch(left, right);
 }
 
 /** The two halves together: what makes two entries the same record. */
