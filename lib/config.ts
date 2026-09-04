@@ -16,7 +16,7 @@ import type { Field } from "./types";
    questions the record has to answer.
    ------------------------------------------------------------------ */
 
-export type LevelId = "ear" | "standard" | "connoisseur" | "blindfold";
+export type LevelId = "ear" | "standard" | "blindfold";
 
 export interface Level {
   id: LevelId;
@@ -47,20 +47,23 @@ export const LEVELS: Level[] = [
     fields: ["artist", "song"],
     choice: [],
   },
-  {
-    id: "connoisseur",
-    label: "Connoisseur",
-    blurb: "From the solo entry · artist and title",
-    start: "solo",
-    fields: ["artist", "song"],
-    choice: [],
-  },
+  /*
+   * Named after the Blindfold Test — Leonard Feather's column in DownBeat,
+   * running since 1946, where a musician is played a record cold, told
+   * nothing about it, and asked who that is. Which is this level exactly.
+   *
+   * It does not ask for the artist. On most of these records the soloist is
+   * the artist, so asking for both was asking the same question twice, in
+   * two boxes, one of which was already filled in. What is left is the two
+   * things a blindfold test actually asks: who is that, and what are they
+   * playing.
+   */
   {
     id: "blindfold",
     label: "Blindfold",
-    blurb: "From the solo entry · artist, title and who is playing",
+    blurb: "From the solo entry · who is playing, and the tune",
     start: "solo",
-    fields: ["artist", "song", "soloist"],
+    fields: ["soloist", "song"],
     choice: [],
   },
 ];
@@ -72,15 +75,14 @@ export function levelOf(config: GameConfig): Level {
 /**
  * The head level a solo level stands down to.
  *
- * Same questions where the level can keep them: connoisseur is standard
- * asked later, so it stands down to standard. Blindfold also asks who is
- * playing, and that is a question about a marked solo — a screen with no
- * marked solos cannot ask it, so blindfold stands down to standard too.
+ * Blindfold asks who is playing, which is a question about a marked solo —
+ * a screen with no marked solos on it cannot ask it at all. So it stands
+ * down to standard, which asks the nearest thing it can: the name on the
+ * sleeve, and the tune.
  */
 const STANDS_DOWN_TO: Record<LevelId, LevelId> = {
   ear: "ear",
   standard: "standard",
-  connoisseur: "standard",
   blindfold: "standard",
 };
 
@@ -160,9 +162,8 @@ export const DEFAULT_CONFIG: GameConfig = {
 
 /*
  * One-click ladders, independent of level. Named after where they open
- * rather than after a kind of listener: the levels own those names now, and
- * two "Connoisseur" buttons in one panel is one too many. What separates
- * them is the first rung anyway.
+ * rather than after a kind of listener — what separates them is the first
+ * rung, and a name like "connoisseur" says nothing about that.
  */
 export const LADDER_PRESETS: { id: string; label: string; ladderMs: number[] }[] = [
   /*
