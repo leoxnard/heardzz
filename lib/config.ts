@@ -70,6 +70,42 @@ export function levelOf(config: GameConfig): Level {
 }
 
 /**
+ * The head level a solo level stands down to.
+ *
+ * Same questions where the level can keep them: connoisseur is standard
+ * asked later, so it stands down to standard. Blindfold also asks who is
+ * playing, and that is a question about a marked solo — a screen with no
+ * marked solos cannot ask it, so blindfold stands down to standard too.
+ */
+const STANDS_DOWN_TO: Record<LevelId, LevelId> = {
+  ear: "ear",
+  standard: "standard",
+  connoisseur: "standard",
+  blindfold: "standard",
+};
+
+/** The levels a screen can offer. */
+export function levelsFor(soloLevels: boolean): Level[] {
+  return soloLevels ? LEVELS : LEVELS.filter((level) => level.start === "head");
+}
+
+/**
+ * The config a screen actually plays.
+ *
+ * The solo levels open at the solo entry, and only a record somebody has
+ * marked up has one. A for-you sitting is records fetched minutes ago that
+ * nobody has been near, so on that screen those levels have nothing to open.
+ * The stored setting is left alone — it belongs to the player, not to the
+ * screen they happen to be on — and the screen plays the nearest level it
+ * can honour instead.
+ */
+export function playedConfig(config: GameConfig, soloLevels: boolean): GameConfig {
+  if (soloLevels) return config;
+  const level = STANDS_DOWN_TO[config.level] ?? DEFAULT_CONFIG.level;
+  return level === config.level ? config : { ...config, level };
+}
+
+/**
  * The categories this round actually asks for.
  *
  * The level decides, except that turning the title off in settings still

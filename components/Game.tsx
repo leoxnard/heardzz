@@ -8,6 +8,7 @@ import { Board } from "./Board";
 import { Result } from "./Result";
 import { GuessField } from "./GuessField";
 import { ChoiceField } from "./ChoiceField";
+import { LevelPicker } from "./LevelPicker";
 import { SettingsPanel } from "./SettingsPanel";
 import { StatsPanel } from "./StatsPanel";
 import { SiteHeader } from "./SiteHeader";
@@ -21,7 +22,9 @@ import {
   buildShare, createRound, giveUp, missesLeft, openFields,
   recordResult, rungIndex, skipAttempt, submitGuess, unlockedMs,
 } from "@/lib/game";
-import { activeFields, levelOf } from "@/lib/config";
+import {
+  LEVELS, activeFields, levelOf, levelsFor, playedConfig, type LevelId,
+} from "@/lib/config";
 import type { Field, RoundState, Solo } from "@/lib/types";
 
 /* ------------------------------------------------------------------
@@ -78,9 +81,27 @@ export function Game({
   mode,
   ordered = false,
   extraArtists = [],
+  soloLevels = true,
+  fixedLevel,
 }: {
   solos: Solo[];
   mode: Mode;
+  /**
+   * A level this screen plays and does not let go of. Set on the daily,
+   * which is one round for everybody: a shared result means a shared
+   * question, and "solved on half a second" says nothing if the person
+   * beside you was answering an easier one. Practice is where the levels
+   * are for.
+   */
+  fixedLevel?: LevelId;
+  /**
+   * Whether the records on this screen can be asked to open at the solo
+   * entry. False for a for-you sitting: those records were fetched minutes
+   * ago and nobody has marked a solo on any of them, so the hard levels
+   * would have nothing to open. They are not offered there, and a stored
+   * setting that names one stands down for the duration.
+   */
+  soloLevels?: boolean;
   /**
    * Names to suggest beyond the index and the records in hand — the artists
    * a for-you sitting is drawing on, most of which it has not fetched yet.
@@ -98,36 +119,87 @@ export function Game({
    */
   ordered?: boolean;
 }) {
-  const { config, patch, reset, loaded: configLoaded } = useConfig();
+  const { config: storedConfig, patch, reset, loaded: configLoaded } = useConfig();
   const { stats, setStats, resetStats } = useStats();
   const { record, setRecord, loaded: recordLoaded } = useDailyRecord();
 
   const { index: practiceIndex, advance: nextPractice } = usePracticeIndex();
 
   const [panel, setPanel] = useState<"settings" | "stats" | "report" | null>(null);
+  const [levelOpen, setLevelOpen] = useState(false);
   const [inputs, setInputs] = useState<Partial<Record<Field, string>>>({});
+  /**
+   * A level chosen on the result screen, waiting for the next record.
+   *
+   * Applying it there and then would throw the result away: the level is
+   * part of the round key, so the change deals a new round over the answers
+   * somebody is still reading. So it is held until they ask to move on.
+   */
+  const [pendingLevel, setPendingLevel] = useState<LevelId | null>(null);
 
+  /*
+   * What is played here, which is not always what is stored — a screen with
+   * no marked solos on it stands the solo levels down. Everything below
+   * reads this; only `patch` writes, and it writes the stored one.
+   */
+  const config = useMemo(() => {
+    const played = playedConfig(storedConfig, soloLevels);
+    return fixedLevel ? { ...played, level: fixedLevel } : played;
+  }, [storedConfig, soloLevels, fixedLevel]);
   const level = levelOf(config);
 
-  // Filtering can empty the pool entirely; falling back beats a blank screen.
+  /*
+   * The levels this screen offers. One, and no picker, where the level is
+   * fixed; the head levels only where nothing has a marked solo.
+   */
+  const levels = useMemo(
+    () => (fixedLevel ? [levelOf(config)] : levelsFor(soloLevels)),
+    [fixedLevel, config, soloLevels],
+  );
+
+  /* Why the level section in settings is not the whole story on this screen. */
+  const levelNote = fixedLevel
+    ? t("level.fixedDaily")
+    : levelsFor(soloLevels).length < LEVELS.length
+      ? t("level.notHere")
+      : undefined;
+
   const pool = useMemo(() => {
-    const filtered = config.verifiedOnly ? solos.filter((s) => s.verified) : solos;
-    return filtered.length > 0 ? filtered : solos;
-  }, [solos, config.verifiedOnly]);
+    /*
+     * A level that opens at the solo entry can only be dealt records that
+     * have one. These used to fall back to the head clip, which handed out
+     * an easy round under a hard name — the setting said "from the solo
+     * entry" and the audio started at the top of the tune. Now they are
+     * simply not dealt at those levels.
+     */
+    const playable = level.start === "solo" ? solos.filter((s) => s.soloClip) : solos;
+    // Filtering can empty the pool entirely; falling back beats a blank screen.
+    const verified = config.verifiedOnly ? playable.filter((s) => s.verified) : playable;
+    return verified.length > 0 ? verified : playable;
+  }, [solos, config.verifiedOnly, level.start]);
 
   const dateKey = useMemo(() => todayKey(), []);
 
-  const solo = useMemo<Solo | null>(
-    () =>
-      mode === "daily"
-        ? pickDaily(pool, dateKey)
-        : ordered
-          // Past the end means the next one has not arrived yet, not that
-          // it is time to start over.
-          ? (pool[practiceIndex] ?? null)
-          : pickSequential(pool, practiceIndex),
-    [pool, mode, dateKey, practiceIndex, ordered],
-  );
+  const solo = useMemo<Solo | null>(() => {
+    if (mode === "daily") {
+      /*
+       * Today's record is today's record. Once one has been started it is
+       * pinned by id, because the level decides which records are in the
+       * pool — and a daily you can re-deal by moving a setting is not a
+       * daily, it is a menu.
+       */
+      const started =
+        record?.date === dateKey
+          ? solos.find((s) => s.id === record.state.soloId)
+          : undefined;
+      return started ?? pickDaily(pool, dateKey);
+    }
+    return ordered
+      // Past the end means the next one has not arrived yet, not that it is
+      // time to start over.
+      ? (pool[practiceIndex] ?? null)
+      : pickSequential(pool, practiceIndex);
+  }, [pool, solos, mode, dateKey, record, practiceIndex, ordered]);
 
   /*
    * A record with no marked solo cannot be asked who is soloing on it.
@@ -186,9 +258,10 @@ export function Game({
 
   /*
    * Which cut of the record is in play. The harder levels open at the solo
-   * entry, which is a different file — one that a record may not have been
-   * given yet. Falling back to the head clip keeps every record playable at
-   * every level; it only makes the hard ones easier than they should be.
+   * entry, which is a different file — and the pool only deals records that
+   * have one at those levels, so the fallback below is now for the one case
+   * left: today's daily, pinned by id, when the level was changed after it
+   * had already been played.
    */
   const clip = useMemo(() => {
     if (!solo) return null;
@@ -399,6 +472,21 @@ export function Game({
     else skip();
   }, [round, config, inputs, guess, skip]);
 
+  /** On to the next record, taking any level chosen on the result screen. */
+  const advance = useCallback(() => {
+    if (pendingLevel) {
+      patch({ level: pendingLevel });
+      setPendingLevel(null);
+    }
+    nextPractice();
+  }, [pendingLevel, patch, nextPractice]);
+
+  /*
+   * The level for what comes next. Only ever reached in practice: the daily
+   * offers one level and so shows no chooser at all.
+   */
+  const chooseNextLevel = useCallback((id: LevelId) => setPendingLevel(id), []);
+
   /**
    * Keyboard control.
    *
@@ -415,7 +503,7 @@ export function Game({
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (panel) return; // the open overlay owns the keyboard
+      if (panel || levelOpen) return; // whatever is open owns the keyboard
 
       /*
        * A key held a moment too long fires again as an OS auto-repeat, and
@@ -463,7 +551,7 @@ export function Game({
         const justNow = revealedAt.current !== null && Date.now() - revealedAt.current < 250;
         if (mode === "practice" && !justNow) {
           event.preventDefault();
-          nextPractice();
+          advance();
         }
         return;
       }
@@ -477,10 +565,18 @@ export function Game({
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [panel, play, skip, submit, revealed, mode, nextPractice]);
+  }, [panel, levelOpen, play, skip, submit, revealed, mode, advance]);
 
   if (!solo || !round) {
-    return <EmptyState hasSolos={solos.length > 0} />;
+    return (
+      <EmptyState
+        hasSolos={solos.length > 0}
+        /* A level that opens at the solo entry with nothing marked up to
+           open is not an empty library — it is a level nothing here can
+           be played at, which is a different sentence. */
+        noSolosMarked={level.start === "solo" && solos.length > 0 && pool.length === 0}
+      />
+    );
   }
 
   const share = buildShare(round, solo, config, mode === "daily" ? dateKey : null);
@@ -521,16 +617,24 @@ export function Game({
               heardMs={unlockedMs(round, config)}
               share={share}
               isDaily={mode === "daily"}
+              levels={levels}
+              nextLevel={levels.find((l) => l.id === (pendingLevel ?? level.id)) ?? level}
+              onLevel={chooseNextLevel}
               onPlayFull={play}
-              onNext={mode === "practice" ? nextPractice : undefined}
+              onNext={mode === "practice" ? advance : undefined}
               keysHint={t(mode === "practice" ? "round.keysHintNext" : "round.keysHintRevealed")}
             />
           ) : (
             <>
               <div className="flex items-baseline justify-between gap-4">
-                <span className="type-eyebrow text-paper-faint">
-                  {level.label}
-                </span>
+                <LevelPicker
+                  levels={levels}
+                  current={level}
+                  open={levelOpen}
+                  onOpenChange={setLevelOpen}
+                  onPick={(id) => patch({ level: id })}
+                  lockedHint={levelNote}
+                />
                 <span className="type-data text-xs text-paper-faint">
                   {formatSnippet(unlockedMs(round, config))}
                 </span>
@@ -612,7 +716,12 @@ export function Game({
 
       {panel === "settings" && (
         <SettingsPanel
-          config={config}
+          /* The stored config, not the played one: this is where the
+             setting is set, and a screen standing a level down for its own
+             reasons must not read back as the player having changed it. */
+          config={storedConfig}
+          levels={levelsFor(soloLevels)}
+          levelNote={levelNote}
           onPatch={patch}
           onReset={reset}
           onClose={() => setPanel(null)}
@@ -652,16 +761,23 @@ function Header({
   );
 }
 
-function EmptyState({ hasSolos }: { hasSolos: boolean }) {
+function EmptyState({
+  hasSolos, noSolosMarked = false,
+}: {
+  hasSolos: boolean;
+  noSolosMarked?: boolean;
+}) {
   return (
     <div className="flex min-h-screen items-center justify-center p-10">
       <div className="max-w-lg">
         <span className="type-eyebrow text-flame">{t("brand")}</span>
         <h1 className="type-display-tight mt-4 text-5xl text-paper">Nothing to play</h1>
         <p className="type-body mt-4 text-paper-dim">
-          {hasSolos
-            ? "Every solo is filtered out by the current settings."
-            : t("library.empty")}
+          {noSolosMarked
+            ? t("level.noSolos")
+            : hasSolos
+              ? "Every solo is filtered out by the current settings."
+              : t("library.empty")}
         </p>
         <Link
           href="/suggest"

@@ -80,9 +80,11 @@ export interface Solo {
 
   /**
    * A second cut of the same recording, starting at `soloAt` instead of the
-   * top of the tune. Optional on purpose: a record without one falls back to
-   * the head clip, so a level that asks for the solo entry is never
-   * unplayable — it is only easier than it should be.
+   * top of the tune. Optional, and what it decides is whether the record can
+   * be dealt at all at a level that opens at the solo entry: those levels
+   * play only records that have one. Falling back to the head clip is what
+   * this used to do, and it meant a hard level quietly handing out an easy
+   * round.
    */
   soloClip?: SoloClip;
 

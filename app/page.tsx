@@ -7,5 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DailyPage() {
   const solos = await loadSolos();
-  return <Game solos={solos} mode="daily" />;
+  /* One round for everybody, at one level: a shared result only means
+     something if everybody was asked the same question. */
+  return <Game solos={solos} mode="daily" fixedLevel="standard" />;
 }

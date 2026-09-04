@@ -96,6 +96,20 @@ export const en = {
     nextDaily: "Next solo in {time}",
     tryPractice: "Not ready to wait? Play practice mode",
     playAnother: "Play another",
+    nextLevel: "Next round",
+    nextLevelHelp: "Starts with the next record.",
+    levelKept: "Kept for every round from here.",
+  },
+
+  /** The level, as it reads on the round screen rather than in settings. */
+  level: {
+    change: "Change level",
+    fixedDaily:
+      "Today's round is Standard for everybody — artist and title, from the top of the tune. What you pick here is for practice.",
+    notHere:
+      "The solo levels are not offered here — nothing in this sitting has had its solo marked yet.",
+    noSolos:
+      "No record here has its solo marked yet, so this level has nothing to open. Pick an easier level and the round starts at the top of the tune.",
   },
 
   stats: {
@@ -185,7 +199,7 @@ export const en = {
     cutSoloClip: "Cut the solo clip",
     soloClipCut: "The hard levels open at {time}.",
     soloClipMissing:
-      "No solo clip yet — the hard levels fall back to the opening, which makes them easier than they should be.",
+      "No solo clip yet — the hard levels cannot deal this record at all until there is one.",
     recut: "Re-cut from a new time",
     recutHelp:
       "Use this when the right moment is not inside the clip at all. It downloads the source again.",

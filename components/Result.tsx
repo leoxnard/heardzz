@@ -5,6 +5,7 @@ import Link from "next/link";
 import { formatSnippet } from "@/lib/audio";
 import { formatCountdown, msUntilTomorrow } from "@/lib/daily";
 import { t } from "@/lib/i18n";
+import type { Level, LevelId } from "@/lib/config";
 import type { RoundState, Solo } from "@/lib/types";
 
 interface ResultProps {
@@ -14,12 +15,18 @@ interface ResultProps {
   share: string;
   isDaily: boolean;
   keysHint: string;
+  /** The levels this screen can offer, in order of difficulty. */
+  levels: Level[];
+  /** What the next round will be played at — the pending choice, or today's. */
+  nextLevel: Level;
+  onLevel: (id: LevelId) => void;
   onPlayFull: () => void;
   onNext?: () => void;
 }
 
 export function Result({
-  solo, state, heardMs, share, isDaily, keysHint, onPlayFull, onNext,
+  solo, state, heardMs, share, isDaily, keysHint, levels, nextLevel, onLevel,
+  onPlayFull, onNext,
 }: ResultProps) {
   const won = state.status === "won";
   const soloist = solo.soloist || solo.artist;
@@ -143,6 +150,49 @@ export function Result({
       <pre className="type-data mt-6 whitespace-pre-wrap border border-ink-edge bg-ink-raised p-4 text-xs leading-relaxed text-paper-dim">
         {share}
       </pre>
+
+      {/* ------------------------------------------------------------------
+          Where the level actually gets decided.
+
+          Settings still holds it, and the round screen can change it on the
+          way past — but this is the one moment anybody knows whether it was
+          too easy, because they have just been told the answer. Practice
+          holds the choice for the next record rather than dealing one over
+          the result being read; the daily has no next round to hold it for,
+          so it keeps it for everything after today.
+          ------------------------------------------------------------------ */}
+      {levels.length > 1 && (
+        <div className="mt-8 border-t border-ink-edge pt-6">
+          <h3 className="type-eyebrow text-flame">{t("result.nextLevel")}</h3>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {levels.map((level) => {
+              const active = level.id === nextLevel.id;
+              return (
+                <button
+                  key={level.id}
+                  type="button"
+                  onClick={() => onLevel(level.id)}
+                  aria-pressed={active}
+                  className={`type-eyebrow border px-3 py-2 transition-colors duration-150 ${
+                    active
+                      ? "border-flame bg-flame text-ink"
+                      : "border-ink-edge text-paper-dim hover:border-paper-faint hover:text-paper"
+                  }`}
+                >
+                  {level.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="type-body mt-3 text-xs text-paper-faint">
+            {nextLevel.blurb}
+            {" · "}
+            {isDaily ? t("result.levelKept") : t("result.nextLevelHelp")}
+          </p>
+        </div>
+      )}
 
       {isDaily && countdown && (
         <>

@@ -2,17 +2,26 @@
 
 import { Overlay, Toggle } from "./Overlay";
 import { formatSnippet } from "@/lib/audio";
-import { CLIP_SECONDS, LADDER_PRESETS, LEVELS, type GameConfig } from "@/lib/config";
+import { CLIP_SECONDS, LADDER_PRESETS, LEVELS, type GameConfig, type Level } from "@/lib/config";
 import { t } from "@/lib/i18n";
 
 interface SettingsPanelProps {
   config: GameConfig;
+  /**
+   * The levels the screen underneath can actually offer. Short of the full
+   * list on for-you, where nothing has a marked solo to open at.
+   */
+  levels?: Level[];
+  /** One line saying what the screen underneath does with the level. */
+  levelNote?: string;
   onPatch: (changes: Partial<GameConfig>) => void;
   onReset: () => void;
   onClose: () => void;
 }
 
-export function SettingsPanel({ config, onPatch, onReset, onClose }: SettingsPanelProps) {
+export function SettingsPanel({
+  config, levels = LEVELS, levelNote, onPatch, onReset, onClose,
+}: SettingsPanelProps) {
   function setRung(index: number, ms: number) {
     const next = [...config.ladderMs];
     next[index] = ms;
@@ -33,9 +42,14 @@ export function SettingsPanel({ config, onPatch, onReset, onClose }: SettingsPan
     <Overlay title={t("settings.title")} onClose={onClose}>
       <p className="type-body text-sm text-paper-dim">{t("settings.intro")}</p>
 
-      <Section title={t("settings.levels")} help={t("settings.levelsHelp")}>
+      <Section
+        title={t("settings.levels")}
+        help={
+          levelNote ? `${t("settings.levelsHelp")} ${levelNote}` : t("settings.levelsHelp")
+        }
+      >
         <ul className="space-y-2">
-          {LEVELS.map((level) => {
+          {levels.map((level) => {
             const active = level.id === config.level;
             return (
               <li key={level.id}>
