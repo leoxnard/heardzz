@@ -47,6 +47,33 @@ export function missesLeft(state: RoundState, config: GameConfig): number {
   return Math.max(0, config.ladderMs.length - misses(state));
 }
 
+/**
+ * The attempts, split into turns.
+ *
+ * A turn is everything answered on one rung: right answers cost nothing and
+ * leave the ladder where it is, so naming the artist and then the tune off
+ * the same half-second happened at one length of audio and is one turn. Only
+ * a wrong answer or a pass closes one, because only those move the ladder.
+ *
+ * Both the board and the shared grid read this, and they must agree — a grid
+ * with more rows in it than the board had is a different round.
+ */
+export function turnsOf(attempts: Attempt[]): Attempt[][] {
+  const turns: Attempt[][] = [];
+  let current: Attempt[] = [];
+
+  for (const attempt of attempts) {
+    current.push(attempt);
+    if (!attempt.correct) {
+      turns.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) turns.push(current);
+
+  return turns;
+}
+
 /** Categories still open, in the order they are asked. */
 export function openFields(state: RoundState, config: GameConfig): Field[] {
   return activeFields(config).filter((field) => !state.solved.includes(field));
@@ -251,13 +278,18 @@ export function buildShare(
   const fields = activeFields(config);
   const done = new Set<Field>();
 
-  const rows = state.attempts.map((attempt) => {
-    if (attempt.correct) done.add(attempt.field);
+  // One row per turn, exactly as the board draws it.
+  const rows = turnsOf(state.attempts).map((turn) => {
+    for (const attempt of turn) {
+      if (attempt.correct) done.add(attempt.field);
+    }
     // A pass answers nothing, so it shows as a pass in every column still
     // open — marking only the field it was aimed at would read as a wrong
-    // answer everywhere else.
+    // answer everywhere else. The last attempt is the one that closed the
+    // turn, so it is the one that decides how the open columns read.
+    const closed = turn[turn.length - 1];
     return fields
-      .map((field) => (done.has(field) ? CORRECT : attempt.skipped ? SKIPPED : WRONG))
+      .map((field) => (done.has(field) ? CORRECT : closed.skipped ? SKIPPED : WRONG))
       .join("");
   });
 

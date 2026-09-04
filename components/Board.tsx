@@ -1,18 +1,24 @@
 "use client";
 
 import { t } from "@/lib/i18n";
+import { turnsOf } from "@/lib/game";
 import type { Attempt } from "@/lib/types";
 
 /* ------------------------------------------------------------------
    The record of what has been tried.
 
-   One row per guess, tagged with the category it was aimed at, because a
-   guess now answers one question rather than all of them at once. Correct
-   answers invert to a solid flame block; wrong ones are struck through and
-   dimmed. The distinction never rests on hue alone.
+   One row per turn, not per guess. A right answer costs nothing and leaves
+   the ladder where it is, so naming the artist and then the tune off the
+   same half-second is one turn — and reading down two rows for it said the
+   opposite, that the second one had cost something. A row therefore holds
+   everything answered on the same rung, side by side, and only a wrong
+   answer or a pass closes it, because only those move the ladder.
+
+   Correct answers invert to a solid flame block; wrong ones are struck
+   through and dimmed. The distinction never rests on hue alone.
 
    The empty rows underneath are the budget: one for every wrong answer
-   still affordable. Right answers add a row without taking one away.
+   still affordable.
    ------------------------------------------------------------------ */
 
 interface BoardProps {
@@ -21,6 +27,7 @@ interface BoardProps {
 }
 
 export function Board({ attempts, missesLeft }: BoardProps) {
+  const turns = turnsOf(attempts);
   const blanks = Array.from({ length: missesLeft }, (_, i) => i);
 
   if (attempts.length === 0 && blanks.length === 0) {
@@ -29,25 +36,32 @@ export function Board({ attempts, missesLeft }: BoardProps) {
 
   return (
     <ol className="border-t border-ink-edge">
-      {attempts.map((attempt, i) => (
+      {turns.map((turn, i) => (
         <li key={i} className="flex items-baseline gap-4 border-b border-ink-edge py-3">
           <span className="type-data w-7 shrink-0 text-xs text-paper-faint">
             {String(i + 1).padStart(2, "0")}
           </span>
-          <span className="type-eyebrow w-20 shrink-0 text-paper-faint">
-            {t(`field.${attempt.field}`)}
-          </span>
-          {attempt.skipped ? (
-            <span className="type-eyebrow text-paper-faint">{t("board.skipped")}</span>
-          ) : attempt.correct ? (
-            <span className="type-body min-w-0 truncate bg-flame px-2 py-[2px] text-sm font-semibold text-ink">
-              {attempt.value}
-            </span>
-          ) : (
-            <span className="type-body min-w-0 truncate px-2 py-[2px] text-sm text-paper-dim line-through decoration-paper-faint">
-              {attempt.value}
-            </span>
-          )}
+
+          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-5 gap-y-2">
+            {turn.map((attempt, j) => (
+              <span key={j} className="flex min-w-0 items-baseline gap-2">
+                <span className="type-eyebrow shrink-0 text-paper-faint">
+                  {t(`field.${attempt.field}`)}
+                </span>
+                {attempt.skipped ? (
+                  <span className="type-eyebrow text-paper-faint">{t("board.skipped")}</span>
+                ) : attempt.correct ? (
+                  <span className="type-body min-w-0 truncate bg-flame px-2 py-[2px] text-sm font-semibold text-ink">
+                    {attempt.value}
+                  </span>
+                ) : (
+                  <span className="type-body min-w-0 truncate px-2 py-[2px] text-sm text-paper-dim line-through decoration-paper-faint">
+                    {attempt.value}
+                  </span>
+                )}
+              </span>
+            ))}
+          </div>
         </li>
       ))}
 
@@ -57,7 +71,7 @@ export function Board({ attempts, missesLeft }: BoardProps) {
           className="flex items-baseline gap-4 border-b border-ink-edge py-3"
         >
           <span className="type-data w-7 shrink-0 text-xs text-paper-faint">
-            {String(attempts.length + i + 1).padStart(2, "0")}
+            {String(turns.length + i + 1).padStart(2, "0")}
           </span>
           <span className="type-body text-sm text-paper-faint">—</span>
         </li>
