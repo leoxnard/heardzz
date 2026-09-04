@@ -60,9 +60,29 @@ export function ForYou() {
   const [source, setSource] = useState("");
   const [reached, setReached] = useState<string[]>([]);
   const [ready, setReady] = useState(0);
+  /**
+   * How many of this sitting's records have been played, read back from the
+   * running count `Game` keeps. What the bar reports is what is still to
+   * come, not how long the sitting has been going — a number that only ever
+   * climbs answers a question nobody asked.
+   */
+  const [played, setPlayed] = useState(0);
   /** Candidates still untried. Drained as rounds are fetched, never reused. */
   const queue = useRef<Candidate[]>([]);
-  const topping = useRef(false);
+  /**
+   * Which sitting is the current one.
+   *
+   * A record takes half a minute to come down, and leaving the sitting does
+   * not reach into that request and stop it. The arrival used to put the
+   * game screen back up — somebody pressing "switch playlist" while one was
+   * in flight was thrown back into the round they had just left, by a
+   * record belonging to a sitting that no longer existed. So every arrival
+   * now checks that it still belongs to the sitting on screen, and one that
+   * does not is dropped.
+   */
+  const sitting = useRef(0);
+  /** The sitting whose top-up loop is running, if any. */
+  const toppingFor = useRef<number | null>(null);
   /** Mirrors the queue's length for the screen, which may not read a ref. */
   const [remaining, setRemaining] = useState(0);
   /**
@@ -87,6 +107,8 @@ export function ForYou() {
    * remaining reads on a question with no new answer.
    */
   const canReplan = useRef(true);
+  /** Mirrors it for the screen, which may not read a ref. */
+  const [canAsk, setCanAsk] = useState(true);
 
   /*
    * Mirrors of state that a background arrival needs to write to storage
@@ -140,6 +162,7 @@ export function ForYou() {
       // Sittings stored before there were two difficulties carry no flag,
       // and every one of those was a widened round that could be asked again.
       canReplan.current = data.replan ?? true;
+      setCanAsk(canReplan.current);
       setPhase("playing");
     } catch {
       // A corrupt session is no different from none.
@@ -151,6 +174,7 @@ export function ForYou() {
   /** Ask TIDAL for another wave, keeping only what has not been offered. */
   const replan = useCallback(async () => {
     if (planning.current || !targetRef.current || !canReplan.current) return;
+    const mine = sitting.current;
     planning.current = true;
     try {
       const response = await fetch("/api/foryou/plan", {
@@ -168,6 +192,7 @@ export function ForYou() {
         return true;
       });
 
+      if (sitting.current !== mine) return;
       queue.current = [...queue.current, ...fresh];
       setRemaining(queue.current.length);
       persistSession();
@@ -197,12 +222,14 @@ export function ForYou() {
    * is normal and not worth showing anybody.
    */
   const topUp = useCallback(async (want: number) => {
-    if (topping.current) return;
-    topping.current = true;
+    const mine = sitting.current;
+    if (toppingFor.current === mine) return;
+    toppingFor.current = mine;
 
     try {
       let added = 0;
       while (added < want && queue.current.length > 0) {
+        if (sitting.current !== mine) return;
         const candidate = queue.current.shift();
         if (!candidate) break;
         setRemaining(queue.current.length);
@@ -214,6 +241,9 @@ export function ForYou() {
             body: JSON.stringify({ candidate }),
           });
           const data = await response.json();
+          // The sitting can have been left while this was in the air, and a
+          // record nobody is waiting for is not worth putting on screen.
+          if (sitting.current !== mine) return;
           if (response.ok && data.solo) {
             solosRef.current = [...solosRef.current, data.solo as Solo];
             setSolos(solosRef.current);
@@ -227,7 +257,8 @@ export function ForYou() {
         }
       }
     } finally {
-      topping.current = false;
+      // Only if it is still ours: a newer sitting may already hold the lock.
+      if (toppingFor.current === mine) toppingFor.current = null;
     }
   }, [persistSession]);
 
@@ -241,6 +272,7 @@ export function ForYou() {
   async function beginSession(request: () => Promise<Response>, resolvedTarget: string) {
     if (running.current) return;
     running.current = true;
+    const mine = (sitting.current += 1);
     setPhase("planning");
     setError(null);
     setSolos([]);
@@ -249,12 +281,14 @@ export function ForYou() {
     try {
       const response = await request();
       const data = await response.json();
+      if (sitting.current !== mine) return;
       if (!response.ok) throw new Error(data.error ?? "Could not read that");
 
       targetRef.current = (data.target as string | undefined) ?? resolvedTarget;
       // Only the easy Last.fm round says no; every other door can be asked
       // for another wave and so leaves this unset.
       canReplan.current = (data.replan as boolean | undefined) ?? true;
+      setCanAsk(canReplan.current);
       offered.current = new Set(
         (data.candidates as Candidate[]).map((c) => `${c.artist}|${c.song}`.toLowerCase()),
       );
@@ -265,6 +299,7 @@ export function ForYou() {
       reachedRef.current = data.reached ?? [];
       setReached(data.reached ?? []);
       setReady(0);
+      setPlayed(0);
       setPhase("fetching");
 
       /*
@@ -280,6 +315,7 @@ export function ForYou() {
 
       void topUp(BUFFER);
     } catch (cause) {
+      if (sitting.current !== mine) return;
       setPhase("idle");
       setError(cause instanceof Error ? cause.message : "Could not read that");
     } finally {
@@ -383,6 +419,10 @@ export function ForYou() {
       // A browser refusing storage is not a reason to refuse the switch.
     }
 
+    // Anything already in the air belongs to the sitting being left.
+    sitting.current += 1;
+    planning.current = false;
+
     targetRef.current = "";
     sourceRef.current = "";
     reachedRef.current = [];
@@ -390,6 +430,7 @@ export function ForYou() {
     queue.current = [];
     offered.current = new Set();
     canReplan.current = true;
+    setCanAsk(true);
 
     setTarget("");
     setWords("");
@@ -398,6 +439,7 @@ export function ForYou() {
     setReached([]);
     setSolos([]);
     setReady(0);
+    setPlayed(0);
     setRemaining(0);
     setError(null);
     setPhase("idle");
@@ -412,27 +454,49 @@ export function ForYou() {
   useEffect(() => {
     if (phase !== "playing") return;
 
-    const timer = window.setInterval(() => {
-      let played = 0;
+    function tick() {
+      let done = 0;
       try {
-        played = Number(window.localStorage.getItem("heardzz:practice:v1") ?? 0) || 0;
+        done = Number(window.localStorage.getItem("heardzz:practice:v1") ?? 0) || 0;
       } catch {
         return;
       }
-      const left = solos.length - played;
+      setPlayed(done);
+      const left = solos.length - done;
       if (queue.current.length < REPLAN_AT) void replan();
       if (left < BUFFER && queue.current.length > 0) void topUp(BUFFER - Math.max(0, left));
-    }, 1000);
+    }
+
+    // Once now, so the count on screen is right from the first frame rather
+    // than a second late — which on arrival at the last record is the
+    // difference between "cueing the next one" and a stale number.
+    tick();
+    const timer = window.setInterval(tick, 1000);
 
     return () => window.clearInterval(timer);
   }, [phase, solos.length, topUp, replan]);
 
   if (phase === "playing" && solos.length > 0) {
+    /*
+     * Records this sitting can still deal after the one in hand. The count
+     * used to be `solos.length`, which counted everything ever fetched —
+     * so five rounds in it read "19 ready" while the sitting was in fact
+     * one record from the end of what it had.
+     */
+    const ahead = Math.max(0, solos.length - played - 1);
+    /* Played past the end: the next one is still coming down. */
+    const cueing = played >= solos.length;
+
     return (
       <div className="flex min-h-screen flex-col">
         <div className="flex items-center justify-between gap-3 border-b border-ink-edge px-6 py-3 sm:px-10">
           <p className="type-body text-xs text-paper-faint">
-            {solos.length} ready{remaining > 0 ? ", more coming" : ""}
+            {cueing
+              ? "Cueing the next one"
+              : ahead > 0
+                ? `${ahead} ready to follow`
+                : "Last one in hand"}
+            {remaining > 0 ? ", more coming" : ""}
             {source ? ` — from ${source}` : ""}
           </p>
           <button
@@ -443,8 +507,24 @@ export function ForYou() {
             Switch playlist
           </button>
         </div>
-        {/* Practice: these are one-off rounds, not a shared daily. */}
-        <Game solos={solos} mode="practice" ordered extraArtists={reached} />
+        {cueing ? (
+          /* Nothing to play for a moment. Which is not the same thing as
+             nothing to play, and must not read like it. */
+          <Cueing exhausted={remaining === 0 && !canAsk} onSwitch={switchPlaylist} />
+        ) : (
+          /*
+            Practice: these are one-off rounds, not a shared daily. And no
+            solo levels — nobody has marked a solo on a record that was
+            fetched ninety seconds ago, so there is no solo entry to open at.
+          */
+          <Game
+            solos={solos}
+            mode="practice"
+            ordered
+            extraArtists={reached}
+            soloLevels={false}
+          />
+        )}
       </div>
     );
   }
@@ -479,6 +559,40 @@ export function ForYou() {
       <div className="mt-12 grid gap-px border border-ink-edge bg-ink-edge lg:grid-cols-3">
         <Door
           index="01"
+          accent="#d51007"
+          mark={
+            <Image
+              src="/brand/lastfm.webp"
+              alt="Last.fm"
+              width={1920}
+              height={486}
+              /* Brand red on near-black sits close to unreadable at this
+                 size, so it gets a touch of lift rather than a recolour. */
+              className="h-[1.15rem] w-auto [filter:brightness(1.25)_saturate(1.1)]"
+              priority
+            />
+          }
+          title="What you already played"
+          blurb="Your username is enough. Play the records already in your history — you have heard every one of them — or keep only your taste and go out to artists you have not."
+          placeholder="your last.fm username"
+          value={listener}
+          onChange={setListener}
+          onSubmit={() => startFromLastfm("known")}
+          busy={busy}
+          label={label}
+          lowercase
+          submitLabel="Records I know"
+          submitHint="Easiest — only tunes your own history says you have played"
+          alternates={[
+            {
+              label: "One step out",
+              hint: "Harder — records next to yours, which you have not played",
+              onSubmit: () => startFromLastfm("nearby"),
+            },
+          ]}
+        />
+        <Door
+          index="02"
           accent="var(--color-paper)"
           mark={
             <Image
@@ -487,7 +601,6 @@ export function ForYou() {
               width={753}
               height={100}
               className="h-4 w-auto opacity-90"
-              priority
             />
           }
           title="A playlist you keep"
@@ -508,9 +621,8 @@ export function ForYou() {
             },
           ]}
         />
-
         <Door
-          index="02"
+          index="03"
           accent="var(--color-flame)"
           /*
             No logo exists for saying what you want, so the mark is the ask
@@ -542,40 +654,6 @@ export function ForYou() {
             },
           ]}
         />
-
-        <Door
-          index="03"
-          accent="#d51007"
-          mark={
-            <Image
-              src="/brand/lastfm.webp"
-              alt="Last.fm"
-              width={1920}
-              height={486}
-              /* Brand red on near-black sits close to unreadable at this
-                 size, so it gets a touch of lift rather than a recolour. */
-              className="h-[1.15rem] w-auto [filter:brightness(1.25)_saturate(1.1)]"
-            />
-          }
-          title="What you already played"
-          blurb="Your username is enough. Play the records already in your history — you have heard every one of them — or keep only your taste and go out to artists you have not."
-          placeholder="your last.fm username"
-          value={listener}
-          onChange={setListener}
-          onSubmit={() => startFromLastfm("known")}
-          busy={busy}
-          label={label}
-          lowercase
-          submitLabel="Records I know"
-          submitHint="Easiest — only tunes your own history says you have played"
-          alternates={[
-            {
-              label: "One step out",
-              hint: "Harder — records next to yours, which you have not played",
-              onSubmit: () => startFromLastfm("nearby"),
-            },
-          ]}
-        />
       </div>
 
       {reached.length > 0 && (
@@ -584,6 +662,61 @@ export function ForYou() {
         </p>
       )}
       {error && <p className="type-body mt-6 text-sm text-flame">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The gap between two records.
+ *
+ * Somebody who answers faster than a download can finish arrives here, and
+ * what they used to get was the game's own empty state — "Nothing to play",
+ * with an invitation to go and suggest a record, which reads as the sitting
+ * being over rather than as a few seconds of waiting. This says the true
+ * thing instead, and says it in the shape of a record being cued: the next
+ * one is already on its way down.
+ */
+function Cueing({ exhausted, onSwitch }: { exhausted: boolean; onSwitch: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <SiteHeader />
+      <div className="flex flex-1 items-center justify-center p-10">
+        <div className="max-w-md">
+          <span className="type-eyebrow text-flame">
+            {exhausted ? "That was the last of it" : "Cueing the next record"}
+          </span>
+          <h1 className="type-display-tight mt-4 text-5xl text-paper">
+            {exhausted ? "Sitting over" : "One moment"}
+          </h1>
+          <p className="type-body mt-4 text-sm leading-relaxed text-paper-dim">
+            {exhausted
+              ? "This taste is played out — everything it reached has been dealt. Another playlist, another username, and it starts again."
+              : "It is being fetched and cut while you wait, which takes about as long as a chorus. Nobody else is getting this one."}
+          </p>
+
+          {exhausted ? (
+            <button
+              type="button"
+              onClick={onSwitch}
+              className="type-eyebrow mt-8 bg-flame px-5 py-3 text-ink transition-colors duration-150 hover:bg-paper"
+            >
+              Build another round
+            </button>
+          ) : (
+            /* Three blocks in the brand mark's own shape, taking their turn
+               — a needle finding the groove rather than a spinner. */
+            <div className="mt-8 flex gap-2" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="block h-3 w-3 animate-pulse bg-flame"
+                  style={{ animationDelay: `${i * 0.25}s`, animationDuration: "1.4s" }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
