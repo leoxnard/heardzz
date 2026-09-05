@@ -66,7 +66,7 @@ const MODEL_ENV = {
 };
 
 /** Bumped when the install recipe changes and the venv has to be rebuilt. */
-const RECIPE = "demucs-4 torch-cpu numpy v1";
+const RECIPE = "demucs-4 torch-cpu numpy v2";
 
 export const MODEL = "htdemucs_6s";
 
@@ -121,17 +121,56 @@ export async function ensureSeparator({ onProgress } = {}) {
   const pip = path.join(VENV_BIN, "pip");
 
   /*
+   * The pip that ensurepip bootstraps is whatever Debian froze, and it is old
+   * enough to want to build some of torch's dependencies from source rather
+   * than take a wheel. That matters below, where the index it can reach is
+   * restricted — a source build needs flit_core, flit_core is not on the
+   * torch index, and the whole install dies on a package nobody asked for.
+   */
+  log("updating pip");
+  await run(pip, ["install", "-q", "-U", "pip"], { maxBuffer: 1024 * 1024 * 16 });
+
+  /*
    * Torch first and on its own. PyPI's default linux wheel is the CUDA build
-   * at 554 MB; the CPU build is 184 MB and lives on a separate index. Resolved
-   * together with everything else, PyPI wins the version comparison and the
-   * CUDA build lands on a machine with no GPU. The index is linux-only —
-   * macOS wheels are on PyPI proper — so a dev machine skips the override.
+   * at 554 MB; the CPU build is 184 MB and lives on a separate index.
+   *
+   * `--index-url` REPLACES the default index rather than adding to it, so on
+   * its own it also hides every ordinary dependency — hence the extra index
+   * alongside it. Having both is safe here: PEP 440 sorts a local version
+   * above the plain one, so `2.14.0+cpu` from the torch index beats `2.14.0`
+   * from PyPI, and the CPU build wins without being asked to.
+   *
+   * That ordering is an argument, not a guarantee — a newer base version on
+   * PyPI would outrank an older CPU build — so the result is checked below
+   * rather than assumed.
    */
   log("installing torch (this is the slow part)");
-  const cpuIndex = process.platform === "linux"
-    ? ["--index-url", "https://download.pytorch.org/whl/cpu"]
+  const onLinux = process.platform === "linux";
+  const indexes = onLinux
+    ? [
+        "--index-url", "https://download.pytorch.org/whl/cpu",
+        "--extra-index-url", "https://pypi.org/simple",
+      ]
     : [];
-  await run(pip, ["install", "-q", "-U", "torch", ...cpuIndex], { maxBuffer: 1024 * 1024 * 16 });
+  await run(pip, ["install", "-q", "-U", "torch", ...indexes], { maxBuffer: 1024 * 1024 * 16 });
+
+  if (onLinux) {
+    const { stdout } = await run(
+      path.join(VENV_BIN, "python"),
+      ["-c", "import torch; print(torch.__version__)"],
+      { maxBuffer: 1024 * 1024 },
+    );
+    const version = stdout.trim();
+    if (!version.includes("+cpu")) {
+      throw new Error(
+        `Installed torch ${version} rather than a CPU build. That is the CUDA ` +
+          "wheel, several hundred megabytes of it, on a machine with no GPU. " +
+          `Remove ${VENV_DIR} and retry; if it recurs the CPU index has fallen ` +
+          "behind PyPI and the version needs pinning.",
+      );
+    }
+    log(`torch ${version}`);
+  }
 
   /*
    * numpy is named explicitly because torch 2.14 no longer pulls it in, and
