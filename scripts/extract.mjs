@@ -859,17 +859,26 @@ export async function applyClipToLibrary(outputId, clip) {
       solo.leadIn = clip.leadIn;
       solo.clipDuration = clip.clipDuration;
       solo.sourceDuration = clip.sourceDuration;
+      /*
+       * The stems were separated from the audio this just replaced, and they
+       * keep the same filenames — so nothing downstream would notice that
+       * they now belong to a different piece of music. They have to go, and
+       * `npm run split-stems` makes them again.
+       */
+      delete solo.stems;
       touched += 1;
     }
     if (
       solo.soloClip &&
       path.basename(solo.soloClip.audio).replace(/\.mp3$/, "") === outputId
     ) {
+      // Spreading the old cut would carry its stems across; see above.
       solo.soloClip = {
         ...solo.soloClip,
         audio: clip.audio,
         leadIn: clip.leadIn,
         clipDuration: clip.clipDuration,
+        stems: undefined,
       };
       touched += 1;
     }

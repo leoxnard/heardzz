@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { readLibrary, writeLibrary } from "@/scripts/extract.mjs";
+import { stemFilesFor } from "@/scripts/separate.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
 import { AUDIO_DIR } from "@/lib/paths";
 import { resolveSoloist } from "@/lib/soloist";
@@ -47,6 +48,25 @@ export async function PATCH(request: Request) {
 
   const merged = { ...current, ...body };
 
+  /*
+   * Moving an entry point moves the window the stems were judged over, so
+   * the verdict stored on them no longer describes what a round would play.
+   * The files are still valid audio, but "is there anything here at 0.5 s"
+   * was answered about a different half second — and a stale yes deals a
+   * silent round. Dropping them makes the next `npm run split-stems` redo
+   * the measurement, which is the only way to get an honest answer back.
+   */
+  if (typeof body.leadIn === "number" && body.leadIn !== current.leadIn) {
+    delete merged.stems;
+  }
+  if (
+    merged.soloClip &&
+    current.soloClip &&
+    merged.soloClip.leadIn !== current.soloClip.leadIn
+  ) {
+    merged.soloClip = { ...merged.soloClip, stems: undefined };
+  }
+
   const updated: Solo = {
     ...merged,
     id: current.id,
@@ -84,6 +104,10 @@ export async function DELETE(request: Request) {
     if (!audio) continue;
     if (kept.some((solo) => solo.audio === audio || solo.soloClip?.audio === audio)) continue;
     await unlink(path.join(AUDIO_DIR, path.basename(audio))).catch(() => {});
+    // The stems are named after the clip, so they orphan with it.
+    for (const stem of stemFilesFor(path.basename(audio, ".mp3"))) {
+      await unlink(path.join(AUDIO_DIR, stem)).catch(() => {});
+    }
   }
 
   return NextResponse.json({ ok: true });

@@ -2,7 +2,9 @@
 
 import { Overlay, Toggle } from "./Overlay";
 import { formatSnippet } from "@/lib/audio";
-import { CLIP_SECONDS, LADDER_PRESETS, LEVELS, type GameConfig, type Level } from "@/lib/config";
+import {
+  CLIP_SECONDS, LADDER_PRESETS, LEVELS, STEMS, type GameConfig, type Level,
+} from "@/lib/config";
 import { t } from "@/lib/i18n";
 
 interface SettingsPanelProps {
@@ -70,6 +72,37 @@ export function SettingsPanel({
                     }`}
                   >
                     {level.blurb}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Section>
+
+      <Section title={t("settings.stems")} help={t("settings.stemsHelp")}>
+        <ul className="space-y-2">
+          {STEMS.map((stem) => {
+            const active = stem.id === config.stem;
+            return (
+              <li key={stem.id}>
+                <button
+                  type="button"
+                  onClick={() => onPatch({ stem: stem.id })}
+                  aria-pressed={active}
+                  className={`w-full border px-4 py-3 text-left transition-colors duration-150 ${
+                    active
+                      ? "border-flame bg-flame text-ink"
+                      : "border-ink-edge text-paper-dim hover:border-paper-faint hover:text-paper"
+                  }`}
+                >
+                  <span className="type-eyebrow block">{stem.label}</span>
+                  <span
+                    className={`type-body mt-1 block text-xs ${
+                      active ? "text-ink/70" : "text-paper-faint"
+                    }`}
+                  >
+                    {stem.blurb}
                   </span>
                 </button>
               </li>
@@ -157,17 +190,6 @@ export function SettingsPanel({
           label={t("settings.verifiedOnly")}
           checked={config.verifiedOnly}
           onChange={(value) => onPatch({ verifiedOnly: value })}
-        />
-      </Section>
-
-      <Section title={t("settings.leadIn")} help={t("settings.leadInHelp")}>
-        <Slider
-          value={config.leadInMs}
-          min={0}
-          max={5000}
-          step={100}
-          display={config.leadInMs === 0 ? "none" : formatSnippet(config.leadInMs)}
-          onChange={(value) => onPatch({ leadInMs: value })}
         />
       </Section>
 

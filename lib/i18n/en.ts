@@ -127,6 +127,9 @@ export const en = {
   settings: {
     title: "Settings",
     intro: "Changes apply immediately and are remembered on this device.",
+    stems: "What you hear",
+    stemsHelp:
+      "The record can be pulled apart and played in pieces. Which part is the soloist depends on who is playing it, so on a piano trio it is the piano. Records where the part comes back empty are simply not dealt.",
     levels: "Level",
     levelsHelp:
       "The clock is the same at every level. What changes is where the clip starts and how much the record has to tell you.",
@@ -138,8 +141,6 @@ export const en = {
     presets: "Ladder presets",
     guessSong: "Ask for the title as well as the artist",
     skipCosts: "A skip counts as a wrong answer",
-    leadIn: "Lead-in before the solo",
-    leadInHelp: "Extra audio played ahead of the start point. Zero is the honest setting.",
     verifiedOnly: "Only play tracks with a confirmed start",
     volume: "Volume",
     reset: "Reset to defaults",

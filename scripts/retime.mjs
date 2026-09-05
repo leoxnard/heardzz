@@ -71,6 +71,8 @@ async function main() {
       }
 
       solo.soloStart = clip.soloStart;
+      // Recut audio: whatever was separated from the old file is not this one.
+      delete solo.stems;
       solo.audio = clip.audio;
       solo.leadIn = clip.leadIn;
       solo.clipDuration = clip.clipDuration;

@@ -4,6 +4,13 @@
 # in the image — a plain Node base will build fine and then fail the moment a
 # record is confirmed.
 #
+# Pulling a clip apart into stems needs a third tool, and that one is a
+# gigabyte. It is NOT in the image: `scripts/separate.mjs` builds it into
+# /data on first use, where it survives deploys the way the clips do. What
+# the image does carry is python3-venv, ~7 MB, without which that build
+# cannot start — `python3 -m venv` on this base fails on a missing ensurepip,
+# and it fails at the moment somebody splits a record rather than at build.
+#
 # Everything written at runtime lives under /data: the library file, the
 # pending suggestions and the clips. Mount a volume there, or a deploy will
 # take the library with it.
@@ -26,7 +33,7 @@ FROM node:24-slim AS runtime
 WORKDIR /app
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg python3 ca-certificates curl \
+ && apt-get install -y --no-install-recommends ffmpeg python3 python3-venv ca-certificates curl \
  && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
  && chmod +x /usr/local/bin/yt-dlp \
  && apt-get purge -y curl \

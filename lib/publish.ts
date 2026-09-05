@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   cutFromSource, dropSource, nextCatalog, readLibrary, slugify, writeLibrary,
 } from "@/scripts/extract.mjs";
+import { stemFilesFor } from "@/scripts/separate.mjs";
 import { cleanName } from "./clean";
 import { findDuplicates } from "./duplicates";
 import { ARTISTS, SONGS, canonical } from "./lexicon";
@@ -201,6 +202,10 @@ export async function publishRecord(body: PublishInput): Promise<PublishOutcome>
       if (!audio) continue;
       if (next.some((kept) => kept.audio === audio || kept.soloClip?.audio === audio)) continue;
       await unlink(clipFile(audio)).catch(() => {});
+      // The stems are named after the clip, so they orphan with it.
+      for (const stem of stemFilesFor(path.basename(audio, ".mp3"))) {
+        await unlink(clipFile(stem)).catch(() => {});
+      }
     }
   }
 

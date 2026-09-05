@@ -23,7 +23,8 @@ import {
   recordResult, rungIndex, skipAttempt, submitGuess, unlockedMs,
 } from "@/lib/game";
 import {
-  LEVELS, activeFields, levelOf, levelsFor, playedConfig, type LevelId,
+  LEVELS, activeFields, hasStem, levelOf, levelsFor, playedClip, playedConfig,
+  playedStem, type LevelId,
 } from "@/lib/config";
 import type { Field, RoundState, Solo } from "@/lib/types";
 
@@ -172,11 +173,27 @@ export function Game({
      * entry" and the audio started at the top of the tune. Now they are
      * simply not dealt at those levels.
      */
-    const playable = level.start === "solo" ? solos.filter((s) => s.soloClip) : solos;
+    const withCut = level.start === "solo" ? solos.filter((s) => s.soloClip) : solos;
+    /*
+     * And a stem can only be played by a record that has one with something
+     * in it. Same rule as the cut above and for the same reason: a round
+     * that plays silence is worse than a round that is too easy.
+     */
+    const playable =
+      config.stem === "full"
+        ? withCut
+        : withCut.filter((s) => hasStem(s, level, config.stem));
     // Filtering can empty the pool entirely; falling back beats a blank screen.
     const verified = config.verifiedOnly ? playable.filter((s) => s.verified) : playable;
-    return verified.length > 0 ? verified : playable;
-  }, [solos, config.verifiedOnly, level.start]);
+    const dealt = verified.length > 0 ? verified : playable;
+    return dealt.length > 0 ? dealt : withCut;
+  }, [solos, config.verifiedOnly, config.stem, level]);
+
+  /*
+   * Nothing in the pool can be played at the chosen stem, so the sitting
+   * plays the full mix instead. The stored setting is untouched.
+   */
+  const stem = useMemo(() => playedStem(config, pool, level), [config, pool, level]);
 
   const dateKey = useMemo(() => todayKey(), []);
 
@@ -257,17 +274,16 @@ export function Game({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   /*
-   * Which cut of the record is in play. The harder levels open at the solo
-   * entry, which is a different file — and the pool only deals records that
-   * have one at those levels, so the fallback below is now for the one case
-   * left: today's daily, pinned by id, when the level was changed after it
-   * had already been played.
+   * Which file is in play: the cut the level asks for, at the stem chosen.
+   *
+   * The pool only deals records that have both, so the fallbacks inside
+   * `playedClip` are for the one case left — today's daily, pinned by id,
+   * when the level or the stem was changed after it had already been played.
    */
-  const clip = useMemo(() => {
-    if (!solo) return null;
-    if (level.start === "solo" && solo.soloClip) return solo.soloClip;
-    return { audio: solo.audio, leadIn: solo.leadIn, clipDuration: solo.clipDuration };
-  }, [solo, level.start]);
+  const clip = useMemo(
+    () => (solo ? playedClip(solo, level, stem) : null),
+    [solo, level, stem],
+  );
 
   const audio = useSoloAudio(clip?.audio ?? null, config.volume);
 
@@ -294,8 +310,7 @@ export function Game({
    *
    * Every playback restarts at the solo entry, so this always climbs from
    * zero — which is what lets the strip replay the ground already covered
-   * instead of animating the newest rung in isolation. Any lead-in is
-   * subtracted, because it sounds before the solo rather than inside it.
+   * instead of animating the newest rung in isolation.
    */
   const playheadMs = useMemo(() => {
     if (!audio.isPlaying || !clip || !round) return null;
@@ -304,9 +319,7 @@ export function Game({
       return audio.progress * (clip.clipDuration - clip.leadIn) * 1000;
     }
 
-    const leadMs = Math.min(config.leadInMs, clip.leadIn * 1000);
-    const totalMs = leadMs + unlockedMs(round, config);
-    return Math.max(0, audio.progress * totalMs - leadMs);
+    return audio.progress * unlockedMs(round, config);
   }, [audio.isPlaying, audio.progress, clip, round, revealed, config]);
 
   const play = useCallback(() => {
@@ -321,10 +334,7 @@ export function Game({
       return;
     }
 
-    const lead = config.leadInMs / 1000;
-    const offset = Math.max(0, clip.leadIn - lead);
-    const duration = (clip.leadIn - offset) + unlockedMs(round, config) / 1000;
-    audio.play(offset, duration);
+    audio.play(clip.leadIn, unlockedMs(round, config) / 1000);
   }, [clip, round, audio, revealed, config]);
 
   // Persist the daily round after every change to it.

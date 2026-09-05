@@ -13,6 +13,61 @@ export interface Credit {
   role: string;
 }
 
+/* ------------------------------------------------------------------
+   Stems.
+
+   A clip is a mix, and it can also be had in pieces: the lead voice alone,
+   or everything but the lead voice. Both are cut from the clip they belong
+   to and share its geometry exactly — same start, same lead-in, same length
+   — so a stem carries a file and nothing else. Only the audio differs.
+   ------------------------------------------------------------------ */
+
+export type StemId = "lead" | "rhythm" | "bass";
+
+/** What the game is asked to play instead of the full mix. */
+export type StemChoice = StemId | "full";
+
+export interface StemVariant {
+  audio: string;
+
+  /**
+   * Which separator head this came from, when it is a single one.
+   *
+   * Recorded because it is not always the same head: the lead voice of a
+   * piano trio is the piano, and of a Blue Note quintet the horns. Absent on
+   * a variant assembled from several heads.
+   */
+  head?: string;
+
+  /**
+   * The separator that produced it, when it was not the usual one.
+   *
+   * Only the bass ever sets this: the six-stem model loses a plucked upright
+   * to its guitar head often enough that an empty answer is retried on the
+   * four-stem model, which has no guitar head to lose it to.
+   */
+  model?: string;
+
+  /**
+   * Whether anything actually sounds in the window the round opens on.
+   *
+   * Not every record has a lead voice to pull out — a piano trio has no horn,
+   * so `lead` comes back as separation residue rather than as a part. The
+   * pool filters on this, because dealing a silent round is worse than
+   * dealing an easy one.
+   */
+  usable: boolean;
+
+  /** Mean dBFS over the opening two seconds. */
+  openLevel: number | null;
+  /** How far that sits under the full mix. The number the verdict rests on. */
+  relativeLevel: number | null;
+  /** Loudest sample in the opening half-second — the first ladder rung. */
+  onsetPeak: number | null;
+}
+
+export type StemSet = Partial<Record<StemId, StemVariant>>;
+
 /** One cut of a recording: a file, and where in the source it came from. */
 export interface SoloClip {
   audio: string;
@@ -22,6 +77,8 @@ export interface SoloClip {
   leadIn: number;
   /** Length of the file in seconds. */
   clipDuration: number;
+  /** Pulled-apart versions of this same cut. Absent until they are made. */
+  stems?: StemSet;
 }
 
 export interface Solo {
@@ -77,6 +134,15 @@ export interface Solo {
   leadIn: number;
   /** Length of the clip file in seconds. */
   clipDuration: number;
+  /**
+   * Pulled-apart versions of the head clip.
+   *
+   * It sits here rather than on a SoloClip because the head clip's own file
+   * and geometry sit here too — `soloClip` is the second cut, and it carries
+   * its own. Both cuts can have stems, because which stem is played is
+   * independent of which cut a level opens on.
+   */
+  stems?: StemSet;
 
   /**
    * A second cut of the same recording, starting at `soloAt` instead of the

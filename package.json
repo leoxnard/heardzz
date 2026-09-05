@@ -13,7 +13,8 @@
     "personnel": "node scripts/personnel.mjs",
     "fetch-missing": "node scripts/fetch-missing.mjs",
     "backfill-soloist": "node scripts/backfill-soloist.mjs",
-    "cut-solos": "node scripts/cut-solo-clips.mjs"
+    "cut-solos": "node scripts/cut-solo-clips.mjs",
+    "split-stems": "node scripts/split-stems.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.63",

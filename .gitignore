@@ -45,6 +45,9 @@ next-env.d.ts
 # server they live on a mounted volume. data/solos.json is tracked, so
 # `npm run fetch-missing` rebuilds them from it wherever it runs.
 /data/audio/
+# The separator: a python environment and model weights, about a gigabyte.
+# Built on demand into the data volume so the image never carries it.
+/data/tools/
 /data/suggestions.json
 /data/reports.json
 

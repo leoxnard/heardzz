@@ -6,7 +6,7 @@
    exactly this file. Edit it and hot reload picks it up immediately.
    ------------------------------------------------------------------ */
 
-import type { Field } from "./types";
+import type { Field, Solo, SoloClip, StemChoice, StemId, StemSet } from "./types";
 
 /* ------------------------------------------------------------------
    Levels.
@@ -107,6 +107,86 @@ export function playedConfig(config: GameConfig, soloLevels: boolean): GameConfi
   return level === config.level ? config : { ...config, level };
 }
 
+/* ------------------------------------------------------------------
+   Stems.
+
+   A third axis, and deliberately orthogonal to the other two: a level says
+   where the clip opens and what it asks, and this says which layer of the
+   recording is heard. Every combination is meant to be legal — the blindfold
+   test with only the horn is a different question from the blindfold test
+   with only the rhythm section, and both are worth asking.
+   ------------------------------------------------------------------ */
+
+export interface Stem {
+  id: StemChoice;
+  label: string;
+  blurb: string;
+}
+
+export const STEMS: Stem[] = [
+  { id: "full", label: "The record", blurb: "As it was pressed" },
+  { id: "lead", label: "Only the soloist", blurb: "Whoever is out front, lifted out of the band" },
+  { id: "rhythm", label: "Only the rhythm section", blurb: "The band, with the lead voice gone" },
+  { id: "bass", label: "Only the bass", blurb: "The walk, on its own" },
+];
+
+/** The stems belonging to whichever cut a level opens on. */
+export function stemsOf(solo: Solo, level: Level): StemSet | undefined {
+  return level.start === "solo" && solo.soloClip ? solo.soloClip.stems : solo.stems;
+}
+
+/**
+ * Can this record be dealt at this stem, on this level?
+ *
+ * Two things have to be true and they fail for different reasons. The files
+ * may not exist yet, because splitting a record is a separate pass over the
+ * library and a record added this morning has not had it. And the variant may
+ * exist and be empty: a piano trio has no horn to lift out, and a tune that
+ * opens on an unaccompanied pickup has no rhythm section in its first half
+ * second. Both end the same way — the record is not dealt — but only the
+ * second one is a judgement about the music.
+ */
+export function hasStem(solo: Solo, level: Level, stem: StemChoice): boolean {
+  if (stem === "full") return true;
+  return stemsOf(solo, level)?.[stem]?.usable === true;
+}
+
+/**
+ * The stem a screen actually plays.
+ *
+ * Mirrors what `playedConfig` does for levels, and for the same reason: the
+ * stored setting belongs to the player, not to the pool they happen to be
+ * looking at. If nothing in the pool can be played at the chosen stem, the
+ * screen falls back to the full mix rather than showing an empty board, and
+ * the setting is left where it was.
+ */
+export function playedStem(config: GameConfig, pool: Solo[], level: Level): StemChoice {
+  if (config.stem === "full") return "full";
+  return pool.some((solo) => hasStem(solo, level, config.stem)) ? config.stem : "full";
+}
+
+/**
+ * The file a round plays: the cut the level asks for, at the stem chosen.
+ *
+ * Falls back to the full mix whenever the variant is missing or empty, so a
+ * caller never has to check first. A stem shares its parent cut's geometry
+ * exactly, which is why only `audio` is replaced.
+ */
+export function playedClip(
+  solo: Solo,
+  level: Level,
+  stem: StemChoice,
+): Pick<SoloClip, "audio" | "leadIn" | "clipDuration"> {
+  const base =
+    level.start === "solo" && solo.soloClip
+      ? solo.soloClip
+      : { audio: solo.audio, leadIn: solo.leadIn, clipDuration: solo.clipDuration };
+
+  if (stem === "full") return base;
+  const variant = stemsOf(solo, level)?.[stem as StemId];
+  return variant?.usable ? { ...base, audio: variant.audio } : base;
+}
+
 /**
  * The categories this round actually asks for.
  *
@@ -140,14 +220,15 @@ export interface GameConfig {
   /** 0–1. */
   volume: number;
 
-  /**
-   * Play a short lead-in ahead of the start point so the ear has somewhere
-   * to land. Zero is the honest setting and the default.
-   */
-  leadInMs: number;
 
   /** Keep unconfirmed start points out of play. */
   verifiedOnly: boolean;
+
+  /**
+   * Which layer of the recording is heard. Independent of the level: the
+   * level picks the cut, this picks what is playing inside it.
+   */
+  stem: StemChoice;
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
@@ -156,8 +237,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   guessSong: true,
   skipCostsAttempt: true,
   volume: 0.85,
-  leadInMs: 0,
   verifiedOnly: false,
+  stem: "full",
 };
 
 /*
@@ -215,6 +296,6 @@ export function clampConfig(input: Partial<GameConfig>): GameConfig {
     level: LEVELS.some((level) => level.id === merged.level) ? merged.level : DEFAULT_CONFIG.level,
     ladderMs: ladder.length > 0 ? ladder : DEFAULT_CONFIG.ladderMs,
     volume: Math.min(1, Math.max(0, Number(merged.volume) || 0)),
-    leadInMs: Math.min(5000, Math.max(0, Math.round(Number(merged.leadInMs) || 0))),
+    stem: STEMS.some((stem) => stem.id === merged.stem) ? merged.stem : DEFAULT_CONFIG.stem,
   };
 }
