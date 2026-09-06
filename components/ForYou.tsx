@@ -359,6 +359,28 @@ export function ForYou() {
   }
 
   /**
+   * The same words, taken as one name and nothing else.
+   *
+   * The door above reads a taste and widens from it, which is the wrong
+   * answer to "I want to hear Dexter Gordon" — that sitting should be
+   * Dexter Gordon, not the people either side of him. Same distinction the
+   * TIDAL door already draws between playing a list and using it as a
+   * description, and it needs no model: the words are the name.
+   */
+  function startOnlyArtist() {
+    const trimmed = words.trim();
+    void beginSession(
+      () =>
+        fetch("/api/foryou/from-text", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: trimmed, mode: "only" }),
+        }),
+      "",
+    );
+  }
+
+  /**
    * The same words, taken as a genre rather than as a description.
    *
    * The door above hands them to a model, which names artists known for the
@@ -638,7 +660,7 @@ export function ForYou() {
             </span>
           }
           title="Whatever you can name"
-          blurb="Name whoever you want to hear, or just describe it — a genre, an era, a mood — and a model reads artists out of it."
+          blurb="Name whoever you want to hear, or just describe it — a genre, an era, a mood. Play that one artist alone, or let a model widen out from what you said."
           placeholder="Michael Brecker only, or hard bop"
           value={words}
           onChange={setWords}
@@ -647,6 +669,11 @@ export function ForYou() {
           label={label}
           submitHint="A model reads artists out of it, then widens from those"
           alternates={[
+            {
+              label: "Only that artist",
+              hint: "One name, their catalogue, nobody else — nothing widened",
+              onSubmit: startOnlyArtist,
+            },
             {
               label: "Just the genre",
               hint: "Skip the model — the best-known records under that tag",

@@ -25,8 +25,25 @@ export interface ResolvedArtist {
   name: string;
 }
 
-/** ISRCs worth trying before giving up on a name. */
-const ISRC_ATTEMPTS = 5;
+/**
+ * How many of an artist's recordings to look through for an ISRC.
+ *
+ * One request either way, just a longer page — and the difference is the
+ * whole detour working or not. Measured on four well-known names: at five
+ * recordings, Dexter Gordon, Wayne Shorter and Bill Evans all came back
+ * with none at all, because the top few hits happen to be releases nobody
+ * ever assigned one to. At a hundred they yield ten, eighteen and twenty-one.
+ */
+const SEARCH_ROWS = 100;
+
+/**
+ * And how many of those ISRCs to actually put to TIDAL before giving up.
+ *
+ * Separate from the number searched because these are the expensive half:
+ * one network call each, against a service with its own queue. A long page
+ * costs nothing extra to fetch and a long walk through it costs a great deal.
+ */
+const ISRC_ATTEMPTS = 8;
 
 function bestMatch(name: string, artists: TidalArtist[]): TidalArtist | null {
   if (artists.length === 0) return null;
@@ -55,8 +72,8 @@ export async function resolveArtistName(name: string): Promise<ResolvedArtist | 
   if (local) return { id: local.id, name: local.name };
 
   try {
-    const isrcs = await isrcsForArtist(trimmed, ISRC_ATTEMPTS);
-    for (const isrc of isrcs) {
+    const isrcs = await isrcsForArtist(trimmed, SEARCH_ROWS);
+    for (const isrc of isrcs.slice(0, ISRC_ATTEMPTS)) {
       const track = await trackByIsrc(isrc);
       if (!track) continue;
       const artists = await trackArtists(track.id);

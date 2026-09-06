@@ -4,8 +4,8 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { z } from "zod";
 import { callerKey, take } from "@/lib/rate-limit";
 import { tidalAvailable, tidalUnavailableReason } from "@/lib/tidal";
-import { resolveArtistNames } from "@/lib/taste-text";
-import { tasteFromArtistIds } from "@/lib/taste";
+import { resolveArtistName, resolveArtistNames } from "@/lib/taste-text";
+import { insideOf, tasteFromArtistIds } from "@/lib/taste";
 
 /**
  * Called direct rather than through the AI Gateway: this deployment already
@@ -73,9 +73,19 @@ async function namesFrom(text: string): Promise<string[]> {
  * has to be read by a model, then placed against TIDAL by way of
  * MusicBrainz (`lib/taste-text.ts`) before anything below this can widen out
  * from it the way `/api/foryou/plan` widens out from a link.
+ *
+ * `mode: "only"` is the other reading of the same words, and the same
+ * distinction the link door already draws between playing what is on a list
+ * and using it as a description. Here it means: that artist, their
+ * catalogue, nobody else. No model is asked — the words are the name — and
+ * nothing is widened.
  */
 export async function POST(request: Request) {
-  if (!process.env.GEMINI_API_KEY) {
+  const body = (await request.json()) as { text?: string; mode?: string };
+  const only = body.mode === "only";
+
+  // Only the widening reading needs a model; naming one artist does not.
+  if (!only && !process.env.GEMINI_API_KEY) {
     return NextResponse.json(
       { error: "GEMINI_API_KEY is not set." },
       { status: 400 },
@@ -85,7 +95,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: tidalUnavailableReason() }, { status: 400 });
   }
 
-  const body = (await request.json()) as { text?: string };
   const text = (body.text ?? "").trim();
   if (!text) {
     return NextResponse.json({ error: "Say who you want to hear." }, { status: 400 });
@@ -100,6 +109,53 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (only) {
+      const artist = await resolveArtistName(text);
+      if (!artist) {
+        /*
+         * Not the same claim as "TIDAL has never heard of them". TIDAL
+         * cannot be searched by name at all, so a typed one is placed by way
+         * of MusicBrainz — and that walk fails on its own terms often enough
+         * that saying otherwise would be wrong. It is also not always the
+         * same answer twice.
+         */
+        return NextResponse.json(
+          {
+            error:
+              `Couldn't place "${text}". A typed name is looked up through ` +
+              "MusicBrainz before TIDAL can be asked, and that lookup came " +
+              "back empty — worth trying again, or spelling it as the records do.",
+          },
+          { status: 400 },
+        );
+      }
+
+      /*
+       * The same call an artist link takes — see `insideOf`. One name in,
+       * one catalogue out, and the sitting is whatever that artist recorded.
+       */
+      const inside = await insideOf({ kind: "artist", id: artist.id });
+      if (inside.candidates.length === 0) {
+        return NextResponse.json(
+          { error: `Nothing well enough known under ${artist.name}.` },
+          { status: 400 },
+        );
+      }
+
+      return NextResponse.json({
+        source: inside.source,
+        reached: inside.reached,
+        candidates: inside.candidates,
+        target: artist.id,
+        /*
+         * A catalogue arrives whole, so there is nothing to fetch more of —
+         * and a replan would come back without the mode and quietly widen
+         * the sitting into the neighbours this reading exists to exclude.
+         */
+        replan: false,
+      });
+    }
+
     const names = await namesFrom(text);
     if (names.length === 0) {
       return NextResponse.json(
