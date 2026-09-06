@@ -224,6 +224,19 @@ export const en = {
     importFailed: "Import failed",
     silentWarning:
       "There is no sound here. The marker is in a gap — move it, or re-cut from a time where the music actually starts.",
+    disabled: "Disabled",
+    selectAll: "Select all",
+    selectNone: "Clear selection",
+    selected: "{n} selected",
+    bulkActions: "Actions",
+    bulk: {
+      verify: "Mark verified",
+      unverify: "Mark unverified",
+      disable: "Disable",
+      enable: "Enable",
+      delete: "Delete",
+    },
+    bulkDeleteConfirm: "Remove {n} records from the library?",
   },
 
   /* The screen where a record is marked up. */

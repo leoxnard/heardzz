@@ -9,7 +9,7 @@ import { SoloEditor } from "./SoloEditor";
 import { SourceWorkbench } from "./SourceWorkbench";
 import { SuggestionReview } from "./SuggestionReview";
 import { t } from "@/lib/i18n";
-import type { Report, Solo, Suggestion } from "@/lib/types";
+import type { BulkAction, Report, Solo, Suggestion } from "@/lib/types";
 import type { SourceResult } from "@/app/api/admin/source/route";
 
 /* ------------------------------------------------------------------
@@ -151,6 +151,25 @@ export function LibraryAdmin({
       const dropped = new Set([...removed, ...written.map((solo) => solo.id)]);
       return [...current.filter((solo) => !dropped.has(solo.id)), ...written];
     });
+  }
+
+  /** Verify, unverify, disable, enable or delete a whole selection at once. */
+  async function bulkAction(ids: string[], action: BulkAction) {
+    const response = await fetch("/api/admin/solos/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, action }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "Could not update those records");
+
+    if (action === "delete") {
+      const removed = data.removed as string[];
+      absorb([], removed);
+      if (selectedId && removed.includes(selectedId)) setSelectedId(null);
+    } else {
+      absorb(data.solos as Solo[], []);
+    }
   }
 
   async function loadPlaylist() {
@@ -759,6 +778,7 @@ export function LibraryAdmin({
               setJob({ kind: "single" });
               setSelectedId(null);
             }}
+            onBulkAction={bulkAction}
           />
         </aside>
 

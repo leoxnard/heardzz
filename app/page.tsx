@@ -6,7 +6,7 @@ import { loadSolos } from "@/lib/library";
 export const dynamic = "force-dynamic";
 
 export default async function DailyPage() {
-  const solos = await loadSolos();
+  const solos = (await loadSolos()).filter((solo) => !solo.disabled);
   /* One round for everybody, at one level: a shared result only means
      something if everybody was asked the same question. */
   return <Game solos={solos} mode="daily" fixedLevel="standard" />;

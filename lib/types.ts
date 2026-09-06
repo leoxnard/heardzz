@@ -166,6 +166,13 @@ export interface Solo {
    */
   verified: boolean;
 
+  /**
+   * True when this entry should be left out of the game entirely, without
+   * removing it from the library — for something wrong enough to pull from
+   * rotation but worth keeping the record and its clip around for later.
+   */
+  disabled?: boolean;
+
   /** One line of context, shown only after the round closes. */
   note?: string;
 
@@ -192,6 +199,9 @@ export interface Solo {
    */
   nearArtists?: string[];
 }
+
+/** What the admin library screen can do to a batch of selected recordings at once. */
+export type BulkAction = "verify" | "unverify" | "disable" | "enable" | "delete";
 
 /**
  * One position on a recording, as it is marked up.

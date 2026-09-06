@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { t } from "@/lib/i18n";
 import { tuneKey } from "@/lib/slug";
-import type { Solo } from "@/lib/types";
+import type { BulkAction, Solo } from "@/lib/types";
 
 /* ------------------------------------------------------------------
    The list down the left.
@@ -59,6 +59,8 @@ interface Recording {
   lead: Solo;
   entries: Solo[];
   verified: boolean;
+  /** Every entry off this tune is sitting out of the game. */
+  disabled: boolean;
   haystack: string;
 }
 
@@ -78,6 +80,7 @@ function groupByTune(solos: Solo[]): Recording[] {
       lead: sorted[0],
       entries: sorted,
       verified: entries.every((solo) => solo.verified),
+      disabled: entries.every((solo) => solo.disabled),
       haystack: entries.map(haystack).join(" "),
     };
   });
@@ -112,9 +115,11 @@ interface LibraryListProps {
   selectedId: string | null;
   onSelect: (solo: Solo) => void;
   onAdd: () => void;
+  /** Verify, unverify, disable, enable or delete every solo behind the given tunes. */
+  onBulkAction: (ids: string[], action: BulkAction) => Promise<void>;
 }
 
-export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListProps) {
+export function LibraryList({ solos, selectedId, onSelect, onAdd, onBulkAction }: LibraryListProps) {
   const [filter, setFilter] = useState<"all" | "unverified">(
     solos.some((solo) => !solo.verified) ? "unverified" : "all",
   );
@@ -122,7 +127,39 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
   const [sort, setSort] = useState<Sort>("artist");
   const [group, setGroup] = useState<Group>("artist");
 
+  /* Tune keys ticked for a bulk action, not individual solo ids — a row is
+     one tune, however many soloists it bundles, and a checkbox picks the row. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [menuOpen]);
+
   const recordings = useMemo(() => groupByTune(solos), [solos]);
+  const recordingByKey = useMemo(
+    () => new Map(recordings.map((recording) => [recording.key, recording])),
+    [recordings],
+  );
+
+  // A tune dropped from the library (or renamed into a different key by an
+  // edit elsewhere) should not linger in the count or the bulk action ids —
+  // derived on read rather than pruned from state, so nothing here needs an
+  // effect just to keep the selection honest.
+  const selectedKeys = useMemo(
+    () => [...selected].filter((key) => recordingByKey.has(key)),
+    [selected, recordingByKey],
+  );
 
   const sections = useMemo<Section[]>(() => {
     const needle = normalize(query.trim());
@@ -154,6 +191,46 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
   }, [recordings, query, filter, sort, group]);
 
   const shown = sections.reduce((n, section) => n + section.items.length, 0);
+  const shownKeys = useMemo(
+    () => sections.flatMap((section) => section.items.map((recording) => recording.key)),
+    [sections],
+  );
+  const allShownSelected = shownKeys.length > 0 && shownKeys.every((key) => selected.has(key));
+
+  function toggleSelectAll() {
+    setSelected(allShownSelected ? new Set() : new Set(shownKeys));
+  }
+
+  function toggleOne(key: string, checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  async function runBulkAction(action: BulkAction) {
+    const ids = selectedKeys.flatMap(
+      (key) => recordingByKey.get(key)?.entries.map((solo) => solo.id) ?? [],
+    );
+    if (ids.length === 0) return;
+    if (action === "delete" && !window.confirm(t("library.bulkDeleteConfirm", { n: ids.length }))) {
+      return;
+    }
+
+    setMenuOpen(false);
+    setBulkBusy(true);
+    setBulkError(null);
+    try {
+      await onBulkAction(ids, action);
+      setSelected(new Set());
+    } catch (cause) {
+      setBulkError(cause instanceof Error ? cause.message : "Could not update those records");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   return (
     <>
@@ -209,6 +286,55 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
             onChange={(value) => setGroup(value as Group)}
           />
         </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            disabled={shownKeys.length === 0}
+            className="type-eyebrow border border-ink-edge px-3 py-2 text-paper-dim transition-colors hover:border-flame hover:text-flame disabled:opacity-30"
+          >
+            {allShownSelected ? t("library.selectNone") : t("library.selectAll")}
+          </button>
+
+          {selectedKeys.length > 0 && (
+            <div ref={menuRef} className="relative ml-auto flex items-center gap-2">
+              <span className="type-data text-xs text-paper-faint">
+                {t("library.selected", { n: selectedKeys.length })}
+              </span>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((current) => !current)}
+                disabled={bulkBusy}
+                aria-label={t("library.bulkActions")}
+                aria-haspopup="true"
+                aria-expanded={menuOpen}
+                className="type-eyebrow border border-paper-faint px-3 py-2 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
+              >
+                •••
+              </button>
+
+              {menuOpen && (
+                <ul className="absolute right-0 top-full z-20 mt-1 w-44 border border-ink-edge bg-ink-raised py-1 shadow-lg">
+                  {(["verify", "unverify", "disable", "enable", "delete"] as const).map((action) => (
+                    <li key={action}>
+                      <button
+                        type="button"
+                        onClick={() => runBulkAction(action)}
+                        className={`type-body block w-full px-4 py-2 text-left text-sm transition-colors hover:bg-ink ${
+                          action === "delete" ? "text-flame" : "text-paper"
+                        }`}
+                      >
+                        {t(`library.bulk.${action}`)}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+        {bulkError && <p className="type-body mt-2 text-xs text-flame">{bulkError}</p>}
       </div>
 
       <ul className="max-h-[70vh] flex-1 overflow-y-auto lg:max-h-none lg:min-h-0">
@@ -242,35 +368,47 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd }: LibraryListP
 
                 return (
                   <li key={recording.key}>
-                    <button
-                      type="button"
-                      onClick={() => onSelect(recording.lead)}
-                      className={`flex w-full items-start gap-3 border-b border-ink-edge px-4 py-3 text-left transition-colors ${
+                    <div
+                      className={`flex w-full items-start gap-3 border-b border-ink-edge px-4 py-3 transition-colors ${
                         active ? "bg-ink-raised" : "hover:bg-ink-raised"
-                      }`}
+                      } ${recording.disabled ? "opacity-50" : ""}`}
                     >
-                      <span
-                        className={`mt-[6px] block h-2 w-2 shrink-0 ${
-                          recording.verified ? "bg-flame-deep" : "bg-flame"
-                        }`}
-                        aria-hidden="true"
+                      <input
+                        type="checkbox"
+                        checked={selected.has(recording.key)}
+                        onChange={(event) => toggleOne(recording.key, event.target.checked)}
+                        aria-label={`${recording.lead.artist} — ${recording.lead.song}`}
+                        className="mt-1 h-4 w-4 shrink-0 accent-flame"
                       />
-                      <span className="min-w-0">
-                        <span className="type-body block truncate text-sm text-paper">
-                          {recording.lead.artist}
+                      <button
+                        type="button"
+                        onClick={() => onSelect(recording.lead)}
+                        className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                      >
+                        <span
+                          className={`mt-[6px] block h-2 w-2 shrink-0 ${
+                            recording.verified ? "bg-flame-deep" : "bg-flame"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0">
+                          <span className="type-body block truncate text-sm text-paper">
+                            {recording.lead.artist}
+                          </span>
+                          <span className="type-body block truncate text-xs text-paper-dim">
+                            {recording.lead.song}
+                            {soloists.length > 0 &&
+                              !(soloists.length === 1 && soloists[0] === recording.lead.artist) &&
+                              ` · ${soloists.join(", ")}`}
+                          </span>
+                          <span className="type-data mt-1 block text-[0.6rem] text-paper-faint">
+                            {recording.entries.map((solo) => solo.catalog).join(" · ")}
+                            {recording.lead.year ? ` · ${recording.lead.year}` : ""}
+                            {recording.disabled && ` · ${t("library.disabled")}`}
+                          </span>
                         </span>
-                        <span className="type-body block truncate text-xs text-paper-dim">
-                          {recording.lead.song}
-                          {soloists.length > 0 &&
-                            !(soloists.length === 1 && soloists[0] === recording.lead.artist) &&
-                            ` · ${soloists.join(", ")}`}
-                        </span>
-                        <span className="type-data mt-1 block text-[0.6rem] text-paper-faint">
-                          {recording.entries.map((solo) => solo.catalog).join(" · ")}
-                          {recording.lead.year ? ` · ${recording.lead.year}` : ""}
-                        </span>
-                      </span>
-                    </button>
+                      </button>
+                    </div>
                   </li>
                 );
               })}
