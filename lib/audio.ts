@@ -43,14 +43,30 @@ const SCHEDULE_LEAD = 0.005;
 let sharedContext: AudioContext | null = null;
 let wakeListenersAttached = false;
 
+/** The ring/silent switch is an iPhone and iPad part. iPadOS reports
+ *  itself as a Mac, so touch points are what separate the two. */
+function hasSilentSwitch(): boolean {
+  const { platform, maxTouchPoints } = navigator;
+  if (/iPhone|iPad|iPod/.test(platform)) return true;
+  return platform === "MacIntel" && maxTouchPoints > 1;
+}
+
 /**
  * iOS routes Web Audio through a session category that the ring/silent
  * switch mutes. Declaring the page as playback moves it to the category
  * used by media players, which the switch does not touch — the same reason
  * a podcast keeps playing on a silenced phone. Safari 16.4+; older iOS
  * keeps the old behaviour and still needs the switch off.
+ *
+ * Only where that switch exists. A playback session is also what puts a
+ * page into the system's Now Playing controls, and on the desktop that is
+ * all cost and no benefit: the page becomes something the machine can pause
+ * — from the media keys, or when speech or an assistant takes the output —
+ * and a session paused from outside the page does not come back on its own.
+ * Half-second snippets have no business in a transport bar.
  */
 function preferPlaybackSession(): void {
+  if (!hasSilentSwitch()) return;
   const session = (navigator as Navigator & { audioSession?: { type: string } })
     .audioSession;
   if (!session) return;
@@ -135,10 +151,21 @@ async function readyContext(): Promise<AudioContext> {
     }
   }
 
-  if (clockIsStalled(ctx)) {
+  // Two ways to be awake on paper and silent in fact. A context whose
+  // session the system took away — speech, an assistant, a call, a pause
+  // from the machine's own media controls — reports "interrupted" or
+  // "suspended" and refuses to resume however often it is asked. And one
+  // that survived a long sleep can report "running" over a clock that has
+  // stopped. Neither raises an error, and neither recovers by waiting.
+  // A context is cheap; the fix for both is to stop nursing this one.
+  if (ctx.state !== "running" || clockIsStalled(ctx)) {
     const dead = ctx;
     sharedContext = null;
-    void dead.close().catch(() => {});
+    try {
+      await dead.close();
+    } catch {
+      /* already gone */
+    }
     ctx = sharedAudioContext();
     try {
       await ctx.resume();
