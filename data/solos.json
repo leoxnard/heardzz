@@ -57,24 +57,27 @@
             "audio": "/api/audio/west-end-blues-louis-armstrong--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -37.2,
-            "relativeLevel": -18.3,
-            "onsetPeak": -36.4
+            "openLevel": -25.7,
+            "relativeLevel": -6.8,
+            "onsetPeak": -24.8,
+            "onsetRelative": -13.6
           },
           "rhythm": {
             "audio": "/api/audio/west-end-blues-louis-armstrong--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -24,
             "relativeLevel": -5.1,
-            "onsetPeak": -17
+            "onsetPeak": -17,
+            "onsetRelative": -5.8
           },
           "bass": {
             "audio": "/api/audio/west-end-blues-louis-armstrong--solo--bass.mp3",
             "head": "bass",
             "usable": false,
-            "openLevel": -71.4,
-            "relativeLevel": -52.5,
-            "onsetPeak": -60.8
+            "openLevel": -60,
+            "relativeLevel": -41.1,
+            "onsetPeak": -49.1,
+            "onsetRelative": -37.9
           }
         }
       },
@@ -83,24 +86,27 @@
           "audio": "/api/audio/west-end-blues-louis-armstrong--lead.mp3",
           "head": "other",
           "usable": true,
-          "openLevel": -19.4,
-          "relativeLevel": 0,
-          "onsetPeak": -4.9
+          "openLevel": -19.9,
+          "relativeLevel": -0.5,
+          "onsetPeak": -5.4,
+          "onsetRelative": -0.4
         },
         "rhythm": {
           "audio": "/api/audio/west-end-blues-louis-armstrong--rhythm.mp3",
           "usable": false,
           "openLevel": -76.9,
           "relativeLevel": -57.5,
-          "onsetPeak": -56
+          "onsetPeak": -56,
+          "onsetRelative": -51
         },
         "bass": {
           "audio": "/api/audio/west-end-blues-louis-armstrong--bass.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -90.3,
-          "relativeLevel": -70.9,
-          "onsetPeak": -63.1
+          "openLevel": -77.3,
+          "relativeLevel": -57.9,
+          "onsetPeak": -53.3,
+          "onsetRelative": -48.3
         }
       }
     },
@@ -156,24 +162,27 @@
             "audio": "/api/audio/ko-ko-charlie-parker--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -40.1,
-            "relativeLevel": -20.4,
-            "onsetPeak": -25.1
+            "openLevel": -35.7,
+            "relativeLevel": -16,
+            "onsetPeak": -20.6,
+            "onsetRelative": -13.2
           },
           "rhythm": {
             "audio": "/api/audio/ko-ko-charlie-parker--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -21.7,
             "relativeLevel": -2,
-            "onsetPeak": -8.9
+            "onsetPeak": -8.9,
+            "onsetRelative": -1.5
           },
           "bass": {
             "audio": "/api/audio/ko-ko-charlie-parker--solo--bass.mp3",
             "head": "bass",
             "usable": true,
-            "openLevel": -36.5,
-            "relativeLevel": -16.8,
-            "onsetPeak": -31.7
+            "openLevel": -25,
+            "relativeLevel": -5.3,
+            "onsetPeak": -20.1,
+            "onsetRelative": -12.7
           }
         }
       },
@@ -182,24 +191,27 @@
           "audio": "/api/audio/ko-ko-charlie-parker--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -90.3,
-          "relativeLevel": -71.5,
-          "onsetPeak": -78.3
+          "openLevel": -85.5,
+          "relativeLevel": -66.7,
+          "onsetPeak": -74.7,
+          "onsetRelative": -68.3
         },
         "rhythm": {
           "audio": "/api/audio/ko-ko-charlie-parker--rhythm.mp3",
           "usable": true,
           "openLevel": -19.3,
           "relativeLevel": -0.5,
-          "onsetPeak": -6.7
+          "onsetPeak": -6.7,
+          "onsetRelative": -0.3
         },
         "bass": {
           "audio": "/api/audio/ko-ko-charlie-parker--bass.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -90.3,
-          "relativeLevel": -71.5,
-          "onsetPeak": -67.4
+          "openLevel": -79.2,
+          "relativeLevel": -60.4,
+          "onsetPeak": -56.9,
+          "onsetRelative": -50.5
         }
       }
     },
@@ -254,24 +266,27 @@
             "audio": "/api/audio/joy-spring-clifford-brown--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -25.9,
-            "relativeLevel": -6.8,
-            "onsetPeak": -10.1
+            "openLevel": -23.6,
+            "relativeLevel": -4.5,
+            "onsetPeak": -7.6,
+            "onsetRelative": -0.3
           },
           "rhythm": {
             "audio": "/api/audio/joy-spring-clifford-brown--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -20.9,
             "relativeLevel": -1.8,
-            "onsetPeak": -10.5
+            "onsetPeak": -10.5,
+            "onsetRelative": -3.2
           },
           "bass": {
             "audio": "/api/audio/joy-spring-clifford-brown--solo--bass.mp3",
             "head": "bass",
             "usable": true,
-            "openLevel": -20.8,
-            "relativeLevel": -1.7,
-            "onsetPeak": -12.1
+            "openLevel": -16.7,
+            "relativeLevel": 2.4,
+            "onsetPeak": -7.9,
+            "onsetRelative": -0.6
           }
         }
       },
@@ -280,24 +295,27 @@
           "audio": "/api/audio/joy-spring-clifford-brown--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -71,
-          "relativeLevel": -51.9,
-          "onsetPeak": -73.4
+          "openLevel": -67.9,
+          "relativeLevel": -48.8,
+          "onsetPeak": -70.3,
+          "onsetRelative": -58.8
         },
         "rhythm": {
           "audio": "/api/audio/joy-spring-clifford-brown--rhythm.mp3",
           "usable": true,
           "openLevel": -21.7,
           "relativeLevel": -2.6,
-          "onsetPeak": -11.8
+          "onsetPeak": -11.8,
+          "onsetRelative": -0.3
         },
         "bass": {
           "audio": "/api/audio/joy-spring-clifford-brown--bass.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -36.1,
-          "relativeLevel": -17,
-          "onsetPeak": -70.3
+          "openLevel": -31.4,
+          "relativeLevel": -12.3,
+          "onsetPeak": -65.2,
+          "onsetRelative": -53.7
         }
       }
     },
@@ -347,24 +365,27 @@
             "audio": "/api/audio/st-thomas-sonny-rollins--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -21.6,
-            "relativeLevel": -3.7,
-            "onsetPeak": -4.8
+            "openLevel": -19.4,
+            "relativeLevel": -1.5,
+            "onsetPeak": -2.7,
+            "onsetRelative": 1.3
           },
           "rhythm": {
             "audio": "/api/audio/st-thomas-sonny-rollins--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -22,
             "relativeLevel": -4.1,
-            "onsetPeak": -7.5
+            "onsetPeak": -7.5,
+            "onsetRelative": -3.5
           },
           "bass": {
             "audio": "/api/audio/st-thomas-sonny-rollins--solo--bass.mp3",
             "head": "bass",
             "usable": true,
-            "openLevel": -25.2,
-            "relativeLevel": -7.3,
-            "onsetPeak": -16.2
+            "openLevel": -18,
+            "relativeLevel": -0.1,
+            "onsetPeak": -8.9,
+            "onsetRelative": -4.9
           }
         }
       },
@@ -372,26 +393,29 @@
         "lead": {
           "audio": "/api/audio/st-thomas-sonny-rollins--lead.mp3",
           "head": "other",
-          "usable": true,
-          "openLevel": -32.2,
-          "relativeLevel": -13.9,
-          "onsetPeak": -37.1
+          "usable": false,
+          "openLevel": -30.9,
+          "relativeLevel": -12.6,
+          "onsetPeak": -35.9,
+          "onsetRelative": -33
         },
         "rhythm": {
           "audio": "/api/audio/st-thomas-sonny-rollins--rhythm.mp3",
           "usable": true,
           "openLevel": -19.6,
           "relativeLevel": -1.3,
-          "onsetPeak": -3.4
+          "onsetPeak": -3.4,
+          "onsetRelative": -0.5
         },
         "bass": {
           "audio": "/api/audio/st-thomas-sonny-rollins--bass.mp3",
           "head": "bass",
           "model": "mdx_extra",
           "usable": true,
-          "openLevel": -28.3,
-          "relativeLevel": -10,
-          "onsetPeak": -9.5
+          "openLevel": -24.4,
+          "relativeLevel": -6.1,
+          "onsetPeak": -5.5,
+          "onsetRelative": -2.6
         }
       }
     },
@@ -451,25 +475,28 @@
             "audio": "/api/audio/blue-train-john-coltrane--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -24.7,
-            "relativeLevel": -4.2,
-            "onsetPeak": -11.4
+            "openLevel": -22.8,
+            "relativeLevel": -2.3,
+            "onsetPeak": -9.4,
+            "onsetRelative": -2.9
           },
           "rhythm": {
             "audio": "/api/audio/blue-train-john-coltrane--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -24.8,
             "relativeLevel": -4.3,
-            "onsetPeak": -8.5
+            "onsetPeak": -8.5,
+            "onsetRelative": -2
           },
           "bass": {
             "audio": "/api/audio/blue-train-john-coltrane--solo--bass.mp3",
             "head": "bass",
             "model": "mdx_extra",
             "usable": true,
-            "openLevel": -29.2,
-            "relativeLevel": -8.7,
-            "onsetPeak": -18
+            "openLevel": -17.7,
+            "relativeLevel": 2.8,
+            "onsetPeak": -6.5,
+            "onsetRelative": 0
           }
         }
       },
@@ -478,24 +505,27 @@
           "audio": "/api/audio/blue-train-john-coltrane--lead.mp3",
           "head": "other",
           "usable": true,
-          "openLevel": -18.4,
-          "relativeLevel": -0.6,
-          "onsetPeak": -4.1
+          "openLevel": -17.6,
+          "relativeLevel": 0.2,
+          "onsetPeak": -3.4,
+          "onsetRelative": 0.2
         },
         "rhythm": {
           "audio": "/api/audio/blue-train-john-coltrane--rhythm.mp3",
           "usable": false,
           "openLevel": -30.4,
           "relativeLevel": -12.6,
-          "onsetPeak": -59.9
+          "onsetPeak": -59.9,
+          "onsetRelative": -56.3
         },
         "bass": {
           "audio": "/api/audio/blue-train-john-coltrane--bass.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -84.3,
-          "relativeLevel": -66.5,
-          "onsetPeak": -69.5
+          "openLevel": -72.7,
+          "relativeLevel": -54.9,
+          "onsetPeak": -58.9,
+          "onsetRelative": -55.3
         }
       }
     },
@@ -549,25 +579,28 @@
             "audio": "/api/audio/autumn-leaves-cannonball-adderley--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -17.3,
-            "relativeLevel": -0.2,
-            "onsetPeak": -8.3
+            "openLevel": -16.4,
+            "relativeLevel": 0.7,
+            "onsetPeak": -7.4,
+            "onsetRelative": -0.2
           },
           "rhythm": {
             "audio": "/api/audio/autumn-leaves-cannonball-adderley--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -30.2,
             "relativeLevel": -13.1,
-            "onsetPeak": -15.2
+            "onsetPeak": -15.2,
+            "onsetRelative": -8
           },
           "bass": {
             "audio": "/api/audio/autumn-leaves-cannonball-adderley--solo--bass.mp3",
             "head": "bass",
             "model": "mdx_extra",
             "usable": true,
-            "openLevel": -30.3,
-            "relativeLevel": -13.2,
-            "onsetPeak": -17.5
+            "openLevel": -20.9,
+            "relativeLevel": -3.8,
+            "onsetPeak": -8.1,
+            "onsetRelative": -0.9
           }
         }
       },
@@ -576,25 +609,28 @@
           "audio": "/api/audio/autumn-leaves-cannonball-adderley--lead.mp3",
           "head": "other",
           "usable": true,
-          "openLevel": -16.9,
-          "relativeLevel": 0.2,
-          "onsetPeak": -6
+          "openLevel": -14.8,
+          "relativeLevel": 2.3,
+          "onsetPeak": -3.9,
+          "onsetRelative": 2.2
         },
         "rhythm": {
           "audio": "/api/audio/autumn-leaves-cannonball-adderley--rhythm.mp3",
           "usable": true,
           "openLevel": -35.5,
           "relativeLevel": -18.4,
-          "onsetPeak": -23.8
+          "onsetPeak": -23.8,
+          "onsetRelative": -17.7
         },
         "bass": {
           "audio": "/api/audio/autumn-leaves-cannonball-adderley--bass.mp3",
           "head": "bass",
           "model": "mdx_extra",
           "usable": true,
-          "openLevel": -22.8,
-          "relativeLevel": -5.7,
-          "onsetPeak": -12.4
+          "openLevel": -17.8,
+          "relativeLevel": -0.7,
+          "onsetPeak": -7.5,
+          "onsetRelative": -1.4
         }
       }
     },
@@ -648,24 +684,27 @@
             "audio": "/api/audio/moanin-lee-morgan--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -18.9,
-            "relativeLevel": -1.7,
-            "onsetPeak": -5.4
+            "openLevel": -18,
+            "relativeLevel": -0.8,
+            "onsetPeak": -4.5,
+            "onsetRelative": -1.3
           },
           "rhythm": {
             "audio": "/api/audio/moanin-lee-morgan--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -22.4,
             "relativeLevel": -5.2,
-            "onsetPeak": -8.4
+            "onsetPeak": -8.4,
+            "onsetRelative": -5.2
           },
           "bass": {
             "audio": "/api/audio/moanin-lee-morgan--solo--bass.mp3",
             "head": "bass",
             "usable": false,
-            "openLevel": -82.5,
-            "relativeLevel": -65.3,
-            "onsetPeak": -64.3
+            "openLevel": -70.9,
+            "relativeLevel": -53.7,
+            "onsetPeak": -53,
+            "onsetRelative": -49.8
           }
         }
       },
@@ -674,24 +713,27 @@
           "audio": "/api/audio/moanin-lee-morgan--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -91,
-          "relativeLevel": -71.3,
-          "onsetPeak": -69.5
+          "openLevel": -90.3,
+          "relativeLevel": -70.6,
+          "onsetPeak": -69.5,
+          "onsetRelative": -67.5
         },
         "rhythm": {
           "audio": "/api/audio/moanin-lee-morgan--rhythm.mp3",
           "usable": true,
           "openLevel": -20.2,
           "relativeLevel": -0.5,
-          "onsetPeak": -2.6
+          "onsetPeak": -2.6,
+          "onsetRelative": -0.6
         },
         "bass": {
           "audio": "/api/audio/moanin-lee-morgan--bass.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -81.9,
-          "relativeLevel": -62.2,
-          "onsetPeak": -56
+          "openLevel": -70.5,
+          "relativeLevel": -50.8,
+          "onsetPeak": -45.5,
+          "onsetRelative": -43.5
         }
       },
       "disabled": false
@@ -755,24 +797,27 @@
             "audio": "/api/audio/freddie-freeloader-wynton-kelly--solo--lead.mp3",
             "head": "piano",
             "usable": false,
-            "openLevel": -51.4,
-            "relativeLevel": -35.6,
-            "onsetPeak": -36.6
+            "openLevel": -49,
+            "relativeLevel": -33.2,
+            "onsetPeak": -37.1,
+            "onsetRelative": -34.9
           },
           "rhythm": {
             "audio": "/api/audio/freddie-freeloader-wynton-kelly--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -16.6,
             "relativeLevel": -0.8,
-            "onsetPeak": -2.9
+            "onsetPeak": -2.9,
+            "onsetRelative": -0.7
           },
           "bass": {
             "audio": "/api/audio/freddie-freeloader-wynton-kelly--solo--bass.mp3",
             "head": "bass",
             "usable": true,
-            "openLevel": -26,
-            "relativeLevel": -10.2,
-            "onsetPeak": -11.4
+            "openLevel": -20.4,
+            "relativeLevel": -4.6,
+            "onsetPeak": -5.5,
+            "onsetRelative": -3.3
           }
         }
       },
@@ -781,24 +826,27 @@
           "audio": "/api/audio/freddie-freeloader-wynton-kelly--lead.mp3",
           "head": "piano",
           "usable": false,
-          "openLevel": -44.7,
-          "relativeLevel": -26.9,
-          "onsetPeak": -62.7
+          "openLevel": -33.2,
+          "relativeLevel": -15.4,
+          "onsetPeak": -50.8,
+          "onsetRelative": -48.9
         },
         "rhythm": {
           "audio": "/api/audio/freddie-freeloader-wynton-kelly--rhythm.mp3",
           "usable": true,
           "openLevel": -18.6,
           "relativeLevel": -0.8,
-          "onsetPeak": -2.6
+          "onsetPeak": -2.6,
+          "onsetRelative": -0.7
         },
         "bass": {
           "audio": "/api/audio/freddie-freeloader-wynton-kelly--bass.mp3",
           "head": "bass",
           "usable": true,
-          "openLevel": -24.1,
-          "relativeLevel": -6.3,
-          "onsetPeak": -14.2
+          "openLevel": -16.5,
+          "relativeLevel": 1.3,
+          "onsetPeak": -6.7,
+          "onsetRelative": -4.8
         }
       }
     },
@@ -860,24 +908,27 @@
             "audio": "/api/audio/so-what-miles-davis--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -26.4,
-            "relativeLevel": -10.5,
-            "onsetPeak": -7.5
+            "openLevel": -26.6,
+            "relativeLevel": -10.7,
+            "onsetPeak": -7.1,
+            "onsetRelative": -5.2
           },
           "rhythm": {
             "audio": "/api/audio/so-what-miles-davis--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -16.5,
             "relativeLevel": -0.6,
-            "onsetPeak": -3.8
+            "onsetPeak": -3.8,
+            "onsetRelative": -1.9
           },
           "bass": {
             "audio": "/api/audio/so-what-miles-davis--solo--bass.mp3",
             "head": "bass",
             "usable": true,
-            "openLevel": -16.9,
-            "relativeLevel": -1,
-            "onsetPeak": -5.7
+            "openLevel": -12.4,
+            "relativeLevel": 3.5,
+            "onsetPeak": -1.2,
+            "onsetRelative": 0.7
           }
         }
       },
@@ -886,25 +937,28 @@
           "audio": "/api/audio/so-what-miles-davis--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -63,
-          "relativeLevel": -44,
-          "onsetPeak": -60.5
+          "openLevel": -63.4,
+          "relativeLevel": -44.4,
+          "onsetPeak": -60.8,
+          "onsetRelative": -35.5
         },
         "rhythm": {
           "audio": "/api/audio/so-what-miles-davis--rhythm.mp3",
           "usable": true,
           "openLevel": -19.5,
           "relativeLevel": -0.5,
-          "onsetPeak": -31.5
+          "onsetPeak": -31.5,
+          "onsetRelative": -6.2
         },
         "bass": {
           "audio": "/api/audio/so-what-miles-davis--bass.mp3",
           "head": "bass",
           "model": "htdemucs",
           "usable": true,
-          "openLevel": -31.7,
-          "relativeLevel": -12.7,
-          "onsetPeak": -31.9
+          "openLevel": -22.5,
+          "relativeLevel": -3.5,
+          "onsetPeak": -22.8,
+          "onsetRelative": 2.5
         }
       }
     },
@@ -963,25 +1017,28 @@
             "audio": "/api/audio/giant-steps-john-coltrane--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -23.7,
-            "relativeLevel": -6.2,
-            "onsetPeak": -10.7
+            "openLevel": -20.1,
+            "relativeLevel": -2.6,
+            "onsetPeak": -6.8,
+            "onsetRelative": -0.1
           },
           "rhythm": {
             "audio": "/api/audio/giant-steps-john-coltrane--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -19.7,
             "relativeLevel": -2.2,
-            "onsetPeak": -8.1
+            "onsetPeak": -8.1,
+            "onsetRelative": -1.4
           },
           "bass": {
             "audio": "/api/audio/giant-steps-john-coltrane--solo--bass.mp3",
             "head": "bass",
             "model": "mdx_extra",
             "usable": true,
-            "openLevel": -20.6,
-            "relativeLevel": -3.1,
-            "onsetPeak": -8.9
+            "openLevel": -18,
+            "relativeLevel": -0.5,
+            "onsetPeak": -6.3,
+            "onsetRelative": 0.4
           }
         }
       },
@@ -990,25 +1047,28 @@
           "audio": "/api/audio/giant-steps-john-coltrane--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -41.9,
-          "relativeLevel": -24,
-          "onsetPeak": -62.4
+          "openLevel": -37.2,
+          "relativeLevel": -19.3,
+          "onsetPeak": -57.1,
+          "onsetRelative": -50.9
         },
         "rhythm": {
           "audio": "/api/audio/giant-steps-john-coltrane--rhythm.mp3",
           "usable": true,
           "openLevel": -18.7,
           "relativeLevel": -0.8,
-          "onsetPeak": -7.4
+          "onsetPeak": -7.4,
+          "onsetRelative": -1.2
         },
         "bass": {
           "audio": "/api/audio/giant-steps-john-coltrane--bass.mp3",
           "head": "bass",
           "model": "mdx_extra",
           "usable": true,
-          "openLevel": -20.9,
-          "relativeLevel": -3,
-          "onsetPeak": -9.4
+          "openLevel": -18.2,
+          "relativeLevel": -0.3,
+          "onsetPeak": -6.6,
+          "onsetRelative": -0.4
         }
       }
     },
@@ -1058,24 +1118,27 @@
             "audio": "/api/audio/four-on-six-wes-montgomery--solo--lead.mp3",
             "head": "guitar",
             "usable": true,
-            "openLevel": -19.7,
-            "relativeLevel": -1.9,
-            "onsetPeak": -20.7
+            "openLevel": -19.2,
+            "relativeLevel": -1.4,
+            "onsetPeak": -20.3,
+            "onsetRelative": -12.7
           },
           "rhythm": {
             "audio": "/api/audio/four-on-six-wes-montgomery--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -25.4,
             "relativeLevel": -7.6,
-            "onsetPeak": -10.4
+            "onsetPeak": -10.4,
+            "onsetRelative": -2.8
           },
           "bass": {
             "audio": "/api/audio/four-on-six-wes-montgomery--solo--bass.mp3",
             "head": "bass",
             "usable": false,
-            "openLevel": -70.2,
-            "relativeLevel": -52.4,
-            "onsetPeak": -62.4
+            "openLevel": -70.3,
+            "relativeLevel": -52.5,
+            "onsetPeak": -62.4,
+            "onsetRelative": -54.8
           }
         }
       },
@@ -1084,24 +1147,27 @@
           "audio": "/api/audio/four-on-six-wes-montgomery--lead.mp3",
           "head": "guitar",
           "usable": true,
-          "openLevel": -22.5,
-          "relativeLevel": -4.5,
-          "onsetPeak": -13.8
+          "openLevel": -22.6,
+          "relativeLevel": -4.6,
+          "onsetPeak": -13.9,
+          "onsetRelative": -9.4
         },
         "rhythm": {
           "audio": "/api/audio/four-on-six-wes-montgomery--rhythm.mp3",
           "usable": true,
           "openLevel": -22.4,
           "relativeLevel": -4.4,
-          "onsetPeak": -5.8
+          "onsetPeak": -5.8,
+          "onsetRelative": -1.3
         },
         "bass": {
           "audio": "/api/audio/four-on-six-wes-montgomery--bass.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -74.5,
-          "relativeLevel": -56.5,
-          "onsetPeak": -62
+          "openLevel": -74.4,
+          "relativeLevel": -56.4,
+          "onsetPeak": -63.1,
+          "onsetRelative": -58.6
         }
       }
     },
@@ -1148,24 +1214,27 @@
             "audio": "/api/audio/gloria-s-step-scott-lafaro--solo--lead.mp3",
             "head": "bass",
             "usable": false,
-            "openLevel": -79.2,
-            "relativeLevel": -60.5,
-            "onsetPeak": -65.2
+            "openLevel": -67.7,
+            "relativeLevel": -49,
+            "onsetPeak": -54.1,
+            "onsetRelative": -46.7
           },
           "rhythm": {
             "audio": "/api/audio/gloria-s-step-scott-lafaro--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -18.6,
             "relativeLevel": 0.1,
-            "onsetPeak": -6.7
+            "onsetPeak": -6.7,
+            "onsetRelative": 0.7
           },
           "bass": {
             "audio": "/api/audio/gloria-s-step-scott-lafaro--solo--bass.mp3",
             "head": "bass",
             "usable": false,
-            "openLevel": -79.2,
-            "relativeLevel": -60.5,
-            "onsetPeak": -65.2
+            "openLevel": -67.7,
+            "relativeLevel": -49,
+            "onsetPeak": -54.1,
+            "onsetRelative": -46.7
           }
         }
       },
@@ -1174,25 +1243,28 @@
           "audio": "/api/audio/gloria-s-step-scott-lafaro--lead.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -58.4,
-          "relativeLevel": -40.9,
-          "onsetPeak": -63.1
+          "openLevel": -46.9,
+          "relativeLevel": -29.4,
+          "onsetPeak": -51.7,
+          "onsetRelative": -47.1
         },
         "rhythm": {
           "audio": "/api/audio/gloria-s-step-scott-lafaro--rhythm.mp3",
           "usable": true,
           "openLevel": -18.5,
           "relativeLevel": -1,
-          "onsetPeak": -4.8
+          "onsetPeak": -4.8,
+          "onsetRelative": -0.2
         },
         "bass": {
           "audio": "/api/audio/gloria-s-step-scott-lafaro--bass.mp3",
           "head": "bass",
           "model": "mdx_extra",
           "usable": true,
-          "openLevel": -25.9,
-          "relativeLevel": -8.4,
-          "onsetPeak": -31.1
+          "openLevel": -18.6,
+          "relativeLevel": -1.1,
+          "onsetPeak": -23.8,
+          "onsetRelative": -19.2
         }
       }
     },
@@ -1238,25 +1310,28 @@
             "audio": "/api/audio/waltz-for-debby-bill-evans--solo--lead.mp3",
             "head": "piano",
             "usable": true,
-            "openLevel": -19.9,
-            "relativeLevel": -2.2,
-            "onsetPeak": -3.7
+            "openLevel": -16.4,
+            "relativeLevel": 1.3,
+            "onsetPeak": -0.4,
+            "onsetRelative": 2.8
           },
           "rhythm": {
             "audio": "/api/audio/waltz-for-debby-bill-evans--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -22.2,
             "relativeLevel": -4.5,
-            "onsetPeak": -7.7
+            "onsetPeak": -7.7,
+            "onsetRelative": -4.5
           },
           "bass": {
             "audio": "/api/audio/waltz-for-debby-bill-evans--solo--bass.mp3",
             "head": "bass",
             "model": "mdx_extra",
             "usable": true,
-            "openLevel": -35.7,
-            "relativeLevel": -18,
-            "onsetPeak": -21
+            "openLevel": -26.8,
+            "relativeLevel": -9.1,
+            "onsetPeak": -12.1,
+            "onsetRelative": -8.9
           }
         }
       },
@@ -1265,24 +1340,27 @@
           "audio": "/api/audio/waltz-for-debby-bill-evans--lead.mp3",
           "head": "piano",
           "usable": false,
-          "openLevel": -21.4,
-          "relativeLevel": -2.8,
-          "onsetPeak": -66.8
+          "openLevel": -17.2,
+          "relativeLevel": 1.4,
+          "onsetPeak": -62,
+          "onsetRelative": -37.5
         },
         "rhythm": {
           "audio": "/api/audio/waltz-for-debby-bill-evans--rhythm.mp3",
           "usable": true,
           "openLevel": -25.4,
           "relativeLevel": -6.8,
-          "onsetPeak": -32.5
+          "onsetPeak": -32.5,
+          "onsetRelative": -8
         },
         "bass": {
           "audio": "/api/audio/waltz-for-debby-bill-evans--bass.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -25.2,
-          "relativeLevel": -6.6,
-          "onsetPeak": -68.7
+          "openLevel": -19.1,
+          "relativeLevel": -0.5,
+          "onsetPeak": -62.4,
+          "onsetRelative": -37.9
         }
       }
     },
@@ -1332,25 +1410,28 @@
             "audio": "/api/audio/cheese-cake-dexter-gordon--solo--lead.mp3",
             "head": "other",
             "usable": true,
-            "openLevel": -22.1,
-            "relativeLevel": -2,
-            "onsetPeak": -10.8
+            "openLevel": -19.8,
+            "relativeLevel": 0.3,
+            "onsetPeak": -8.5,
+            "onsetRelative": -0.7
           },
           "rhythm": {
             "audio": "/api/audio/cheese-cake-dexter-gordon--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -26.7,
             "relativeLevel": -6.6,
-            "onsetPeak": -15.3
+            "onsetPeak": -15.3,
+            "onsetRelative": -7.5
           },
           "bass": {
             "audio": "/api/audio/cheese-cake-dexter-gordon--solo--bass.mp3",
             "head": "bass",
             "model": "mdx_extra",
             "usable": true,
-            "openLevel": -34.6,
-            "relativeLevel": -14.5,
-            "onsetPeak": -22.7
+            "openLevel": -23,
+            "relativeLevel": -2.9,
+            "onsetPeak": -11.1,
+            "onsetRelative": -3.3
           }
         }
       },
@@ -1359,24 +1440,27 @@
           "audio": "/api/audio/cheese-cake-dexter-gordon--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -91,
-          "relativeLevel": -74.6,
-          "onsetPeak": -78.3
+          "openLevel": -90.3,
+          "relativeLevel": -73.9,
+          "onsetPeak": -76.3,
+          "onsetRelative": -71.8
         },
         "rhythm": {
           "audio": "/api/audio/cheese-cake-dexter-gordon--rhythm.mp3",
           "usable": true,
           "openLevel": -17.1,
           "relativeLevel": -0.7,
-          "onsetPeak": -4.9
+          "onsetPeak": -4.9,
+          "onsetRelative": -0.4
         },
         "bass": {
           "audio": "/api/audio/cheese-cake-dexter-gordon--bass.mp3",
           "head": "bass",
           "usable": true,
-          "openLevel": -16.7,
-          "relativeLevel": -0.3,
-          "onsetPeak": -4.5
+          "openLevel": -13.7,
+          "relativeLevel": 2.7,
+          "onsetPeak": -1.5,
+          "onsetRelative": 3
         }
       }
     },
@@ -1430,25 +1514,28 @@
             "audio": "/api/audio/footprints-wayne-shorter--solo--lead.mp3",
             "head": "other",
             "usable": false,
-            "openLevel": -69.7,
-            "relativeLevel": -47.7,
-            "onsetPeak": -55.2
+            "openLevel": -70.2,
+            "relativeLevel": -48.2,
+            "onsetPeak": -55.7,
+            "onsetRelative": -49.2
           },
           "rhythm": {
             "audio": "/api/audio/footprints-wayne-shorter--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -22.2,
             "relativeLevel": -0.2,
-            "onsetPeak": -7
+            "onsetPeak": -7,
+            "onsetRelative": -0.5
           },
           "bass": {
             "audio": "/api/audio/footprints-wayne-shorter--solo--bass.mp3",
             "head": "bass",
             "model": "mdx_extra",
             "usable": true,
-            "openLevel": -43.1,
-            "relativeLevel": -21.1,
-            "onsetPeak": -25
+            "openLevel": -31.6,
+            "relativeLevel": -9.6,
+            "onsetPeak": -13.4,
+            "onsetRelative": -6.9
           }
         }
       },
@@ -1457,25 +1544,28 @@
           "audio": "/api/audio/footprints-wayne-shorter--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -87.3,
-          "relativeLevel": -68.8,
-          "onsetPeak": -72.2
+          "openLevel": -85.5,
+          "relativeLevel": -67,
+          "onsetPeak": -72.2,
+          "onsetRelative": -69.3
         },
         "rhythm": {
           "audio": "/api/audio/footprints-wayne-shorter--rhythm.mp3",
           "usable": true,
           "openLevel": -19,
           "relativeLevel": -0.5,
-          "onsetPeak": -3.5
+          "onsetPeak": -3.5,
+          "onsetRelative": -0.6
         },
         "bass": {
           "audio": "/api/audio/footprints-wayne-shorter--bass.mp3",
           "head": "bass",
           "model": "mdx_extra",
           "usable": true,
-          "openLevel": -31.1,
-          "relativeLevel": -12.6,
-          "onsetPeak": -15.9
+          "openLevel": -19.5,
+          "relativeLevel": -1,
+          "onsetPeak": -4.5,
+          "onsetRelative": -1.6
         }
       }
     },
@@ -1525,24 +1615,27 @@
             "audio": "/api/audio/cantaloupe-island-herbie-hancock--solo--lead.mp3",
             "head": "piano",
             "usable": true,
-            "openLevel": -30.3,
-            "relativeLevel": -7.6,
-            "onsetPeak": -22.6
+            "openLevel": -18.8,
+            "relativeLevel": 3.9,
+            "onsetPeak": -11,
+            "onsetRelative": -2.4
           },
           "rhythm": {
             "audio": "/api/audio/cantaloupe-island-herbie-hancock--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -24.9,
             "relativeLevel": -2.2,
-            "onsetPeak": -9.9
+            "onsetPeak": -9.9,
+            "onsetRelative": -1.3
           },
           "bass": {
             "audio": "/api/audio/cantaloupe-island-herbie-hancock--solo--bass.mp3",
             "head": "bass",
             "usable": true,
-            "openLevel": -30,
-            "relativeLevel": -7.3,
-            "onsetPeak": -18.8
+            "openLevel": -18.4,
+            "relativeLevel": 4.3,
+            "onsetPeak": -8.1,
+            "onsetRelative": 0.5
           }
         }
       },
@@ -1551,24 +1644,27 @@
           "audio": "/api/audio/cantaloupe-island-herbie-hancock--lead.mp3",
           "head": "piano",
           "usable": true,
-          "openLevel": -21.1,
-          "relativeLevel": -2.8,
-          "onsetPeak": -10.2
+          "openLevel": -14.5,
+          "relativeLevel": 3.8,
+          "onsetPeak": -3.7,
+          "onsetRelative": -0.9
         },
         "rhythm": {
           "audio": "/api/audio/cantaloupe-island-herbie-hancock--rhythm.mp3",
           "usable": true,
           "openLevel": -24.7,
           "relativeLevel": -6.4,
-          "onsetPeak": -5
+          "onsetPeak": -5,
+          "onsetRelative": -2.2
         },
         "bass": {
           "audio": "/api/audio/cantaloupe-island-herbie-hancock--bass.mp3",
           "head": "bass",
           "usable": true,
-          "openLevel": -27.4,
-          "relativeLevel": -9.1,
-          "onsetPeak": -13.1
+          "openLevel": -18.1,
+          "relativeLevel": 0.2,
+          "onsetPeak": -3.9,
+          "onsetRelative": -1.1
         }
       }
     },
@@ -1638,25 +1734,28 @@
             "audio": "/api/audio/song-for-my-father-horace-silver--solo--lead.mp3",
             "head": "piano",
             "usable": false,
-            "openLevel": -79.5,
-            "relativeLevel": -58.9,
-            "onsetPeak": -71.2
+            "openLevel": -74.4,
+            "relativeLevel": -53.8,
+            "onsetPeak": -65.7,
+            "onsetRelative": -59.8
           },
           "rhythm": {
             "audio": "/api/audio/song-for-my-father-horace-silver--solo--rhythm.mp3",
             "usable": true,
             "openLevel": -21.2,
             "relativeLevel": -0.6,
-            "onsetPeak": -6.4
+            "onsetPeak": -6.4,
+            "onsetRelative": -0.5
           },
           "bass": {
             "audio": "/api/audio/song-for-my-father-horace-silver--solo--bass.mp3",
             "head": "bass",
             "model": "mdx_extra",
             "usable": true,
-            "openLevel": -28.1,
-            "relativeLevel": -7.5,
-            "onsetPeak": -14.7
+            "openLevel": -19.5,
+            "relativeLevel": 1.1,
+            "onsetPeak": -6,
+            "onsetRelative": -0.1
           }
         }
       },
@@ -1665,24 +1764,27 @@
           "audio": "/api/audio/song-for-my-father-horace-silver--lead.mp3",
           "head": "piano",
           "usable": false,
-          "openLevel": -63.3,
-          "relativeLevel": -45.9,
-          "onsetPeak": -44.8
+          "openLevel": -51.7,
+          "relativeLevel": -34.3,
+          "onsetPeak": -33.3,
+          "onsetRelative": -31.3
         },
         "rhythm": {
           "audio": "/api/audio/song-for-my-father-horace-silver--rhythm.mp3",
           "usable": true,
           "openLevel": -21.3,
           "relativeLevel": -3.9,
-          "onsetPeak": -4.3
+          "onsetPeak": -4.3,
+          "onsetRelative": -2.3
         },
         "bass": {
           "audio": "/api/audio/song-for-my-father-horace-silver--bass.mp3",
           "head": "bass",
           "usable": true,
-          "openLevel": -36.8,
-          "relativeLevel": -19.4,
-          "onsetPeak": -18.3
+          "openLevel": -27.8,
+          "relativeLevel": -10.4,
+          "onsetPeak": -9.2,
+          "onsetRelative": -7.2
         }
       }
     },
@@ -1738,24 +1840,27 @@
           "audio": "/api/audio/blue-in-green-miles-davis--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -91,
-          "relativeLevel": -75.6,
-          "onsetPeak": -76.3
+          "openLevel": -90.3,
+          "relativeLevel": -74.9,
+          "onsetPeak": -74.7,
+          "onsetRelative": -72.8
         },
         "rhythm": {
           "audio": "/api/audio/blue-in-green-miles-davis--rhythm.mp3",
           "usable": true,
           "openLevel": -15.9,
           "relativeLevel": -0.5,
-          "onsetPeak": -2.7
+          "onsetPeak": -2.7,
+          "onsetRelative": -0.8
         },
         "bass": {
           "audio": "/api/audio/blue-in-green-miles-davis--bass.mp3",
           "head": "bass",
           "usable": true,
-          "openLevel": -15.5,
-          "relativeLevel": -0.1,
-          "onsetPeak": -3.5
+          "openLevel": -12.9,
+          "relativeLevel": 2.5,
+          "onsetPeak": -0.9,
+          "onsetRelative": 1
         }
       }
     },
@@ -1811,24 +1916,27 @@
           "audio": "/api/audio/all-blues-miles-davis--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -55.6,
-          "relativeLevel": -38,
-          "onsetPeak": -39.6
+          "openLevel": -54.8,
+          "relativeLevel": -37.2,
+          "onsetPeak": -38.7,
+          "onsetRelative": -35.8
         },
         "rhythm": {
           "audio": "/api/audio/all-blues-miles-davis--rhythm.mp3",
           "usable": true,
           "openLevel": -18.4,
           "relativeLevel": -0.8,
-          "onsetPeak": -4.2
+          "onsetPeak": -4.2,
+          "onsetRelative": -1.3
         },
         "bass": {
           "audio": "/api/audio/all-blues-miles-davis--bass.mp3",
           "head": "bass",
           "usable": true,
-          "openLevel": -21,
-          "relativeLevel": -3.4,
-          "onsetPeak": -16.5
+          "openLevel": -14.4,
+          "relativeLevel": 3.2,
+          "onsetPeak": -9.4,
+          "onsetRelative": -6.5
         }
       }
     },
@@ -1884,24 +1992,27 @@
           "audio": "/api/audio/flamenco-sketches-miles-davis--lead.mp3",
           "head": "other",
           "usable": false,
-          "openLevel": -77.5,
-          "relativeLevel": -62,
-          "onsetPeak": -49.4
+          "openLevel": -77.8,
+          "relativeLevel": -62.3,
+          "onsetPeak": -49.9,
+          "onsetRelative": -45
         },
         "rhythm": {
           "audio": "/api/audio/flamenco-sketches-miles-davis--rhythm.mp3",
           "usable": true,
           "openLevel": -16.1,
           "relativeLevel": -0.6,
-          "onsetPeak": -4.7
+          "onsetPeak": -4.7,
+          "onsetRelative": 0.2
         },
         "bass": {
           "audio": "/api/audio/flamenco-sketches-miles-davis--bass.mp3",
           "head": "bass",
           "usable": true,
-          "openLevel": -17.3,
-          "relativeLevel": -1.8,
-          "onsetPeak": -12.9
+          "openLevel": -14.3,
+          "relativeLevel": 1.2,
+          "onsetPeak": -10,
+          "onsetRelative": -5.1
         }
       }
     },
@@ -1945,24 +2056,27 @@
           "audio": "/api/audio/take-five-dave-brubeck--lead.mp3",
           "head": "piano",
           "usable": false,
-          "openLevel": -81.3,
-          "relativeLevel": -61.5,
-          "onsetPeak": -62
+          "openLevel": -69.3,
+          "relativeLevel": -49.5,
+          "onsetPeak": -50.1,
+          "onsetRelative": -48.4
         },
         "rhythm": {
           "audio": "/api/audio/take-five-dave-brubeck--rhythm.mp3",
           "usable": true,
           "openLevel": -20.3,
           "relativeLevel": -0.5,
-          "onsetPeak": -2.1
+          "onsetPeak": -2.1,
+          "onsetRelative": -0.4
         },
         "bass": {
           "audio": "/api/audio/take-five-dave-brubeck--bass.mp3",
           "head": "bass",
           "usable": false,
-          "openLevel": -83.3,
-          "relativeLevel": -63.5,
-          "onsetPeak": -66.8
+          "openLevel": -77.1,
+          "relativeLevel": -57.3,
+          "onsetPeak": -61.1,
+          "onsetRelative": -59.4
         }
       }
     }

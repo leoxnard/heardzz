@@ -41,6 +41,8 @@ for (const solo of library.solos) {
     clipId: solo.audio ? basename(solo.audio) : null,
     leadIn: solo.leadIn,
     role: solo.soloistRole,
+    personnel: solo.personnel,
+    previous: solo.stems,
     has: () => Boolean(solo.stems),
     apply: (stems) => { solo.stems = stems; },
   };
@@ -52,6 +54,8 @@ for (const solo of library.solos) {
       clipId: basename(solo.soloClip.audio),
       leadIn: solo.soloClip.leadIn,
       role: solo.soloistRole,
+      personnel: solo.personnel,
+      previous: solo.soloClip.stems,
       has: () => Boolean(solo.soloClip.stems),
       apply: (stems) => { solo.soloClip.stems = stems; },
     });
@@ -85,6 +89,8 @@ for (const cut of targets) {
       clipId: cut.clipId,
       leadIn: cut.leadIn,
       role: cut.role,
+      personnel: cut.personnel,
+      previous: cut.previous,
       onProgress: (step) => process.stdout.write(`  ${step}\n`),
     });
 

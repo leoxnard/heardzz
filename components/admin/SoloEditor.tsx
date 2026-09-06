@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Waveform } from "./Waveform";
 import { useSoloAudio } from "@/lib/audio";
+import { StemReview } from "./StemReview";
 import { t } from "@/lib/i18n";
 import type { Solo } from "@/lib/types";
 
@@ -356,6 +357,8 @@ export function SoloEditor({
       </div>
 
       {error && <p className="type-body mt-4 text-sm text-flame">{error}</p>}
+
+      <StemReview solo={solo} onSaved={onSaved} />
 
       <section className="mt-12 border-t border-ink-edge pt-8">
         <h3 className="type-eyebrow text-flame">{t("library.soloist")}</h3>

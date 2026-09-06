@@ -113,6 +113,12 @@ export const en = {
       "No record here has its solo marked yet, so this level has nothing to open. Pick an easier level and the round starts at the top of the tune.",
   },
 
+  /** The layer being played, where it has to stand down for one record. */
+  stem: {
+    notOnThisRecord:
+      "This record has no such part to lift out, so you are hearing it whole. The setting stands, and the next record that has one is played at it.",
+  },
+
   stats: {
     title: "Stats",
     played: "Played",
@@ -146,6 +152,25 @@ export const en = {
     volume: "Volume",
     reset: "Reset to defaults",
     close: "Close",
+  },
+
+  /** Ruling on the pulled-apart layers, in the admin. */
+  stemReview: {
+    title: "Pulled apart",
+    help:
+      "The meters only catch silence. Whether the soloist stem is the soloist, and whether the rhythm mix really lost the horn, is something only listening settles — so nothing here is dealt until it has a yes. Play the half second first: that is the rung the round opens on.",
+    notSplit: "This record has not been split yet. Run split-stems.",
+    headCut: "From the top",
+    soloCut: "From the solo",
+    numbers: "{rel} dB under the mix · opening {onset} dB under it",
+    empty: "Empty — never dealt",
+    approved: "Approved",
+    rejected: "Rejected",
+    unruled: "Not ruled on",
+    approve: "Deal it",
+    reject: "Never deal it",
+    stop: "Stop",
+    audioFailed: "That file would not load.",
   },
 
   library: {

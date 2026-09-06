@@ -26,7 +26,9 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, rm, mkdir, readdir, writeFile, readFile } from "node:fs/promises";
+import {
+  mkdtemp, rm, mkdir, readdir, writeFile, readFile, rename, copyFile,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -237,26 +239,59 @@ const EMPTY_BELOW_MIX = -25;
  * on, and a two-second mean is too forgiving to notice — so the opening is
  * measured on its own, on the peak rather than the mean, because one note
  * inside the window is enough to make a puzzle.
+ *
+ * Two thresholds, because there are two ways to be silent at the top. The
+ * absolute one catches a clip that opens in room tone, where a ratio would
+ * be comparing nothing to nothing. The relative one catches the case that
+ * actually shipped: St. Thomas opens on drums alone, so `other` at the top
+ * of that tune is bleed — it peaked at −37 dBFS, cleared the −40 floor, and
+ * the round dealt half a second of nothing under the name "Only the soloist".
+ *
+ * −25 dB is measured rather than picked. Across the library the quietest
+ * onset that is really a part sits 19.2 dB under the mix, and the loudest
+ * one that is really bleed sits 31.3 dB under it; the band between them is
+ * empty apart from St. Thomas at −33. Which makes it the same number as
+ * EMPTY_BELOW_MIX, and for the same reason — this is that rule again, asked
+ * of the half second the round opens on instead of the first two seconds.
  */
 const ONSET_WINDOW = 0.5;
 const ONSET_SILENT_DBFS = -40;
+const ONSET_BELOW_MIX = -25;
 
 /**
  * Judge one stem against the mix it came out of.
  *
- * Everything is measured on the raw stem, before any gain. That order is not
- * incidental: normalising first would apply 45 dB to separation residue and
- * hand back something at −16 LUFS that measures exactly like a real horn and
- * sounds convincingly like a smeared one. Measure, judge, then amplify.
+ * Two files, deliberately, because the two questions want different ones.
+ *
+ * `stemFile` is the raw separator output and is where the level is measured,
+ * before any gain. That order is not incidental: normalising first would
+ * apply 45 dB to separation residue and hand back something at −16 LUFS that
+ * measures exactly like a real horn and sounds convincingly like a smeared
+ * one. Measure, judge, then amplify.
+ *
+ * `playedFile` is the encoded mp3 a round actually plays, and is where the
+ * opening is measured — because "is there anything to hear at 0.5 s" is a
+ * question about the file that gets served, and the lift is up to 12 dB of
+ * real, audible difference. Judging the opening on the raw stem instead
+ * throws away three cuts across the library whose parts are quiet but
+ * genuinely there, Scott LaFaro's bass among them.
+ *
+ * Falls back to `stemFile` when there is no encode to point at yet.
  */
-export async function judgeStem({ stemFile, mixFile, leadIn }) {
+export async function judgeStem({ stemFile, playedFile, mixFile, leadIn }) {
   const openLevel = await levelAtMarker(stemFile, leadIn, 2);
   const mixLevel = await levelAtMarker(mixFile, leadIn, 2);
-  const onsetPeak = await peakInWindow(stemFile, leadIn, ONSET_WINDOW);
+  const onsetPeak = await peakInWindow(playedFile ?? stemFile, leadIn, ONSET_WINDOW);
+  const mixOnset = await peakInWindow(mixFile, leadIn, ONSET_WINDOW);
 
   const relativeLevel =
     openLevel !== null && mixLevel !== null
       ? Number((openLevel - mixLevel).toFixed(1))
+      : null;
+
+  const onsetRelative =
+    onsetPeak !== null && mixOnset !== null
+      ? Number((onsetPeak - mixOnset).toFixed(1))
       : null;
 
   const usable =
@@ -265,13 +300,16 @@ export async function judgeStem({ stemFile, mixFile, leadIn }) {
     relativeLevel !== null &&
     relativeLevel > EMPTY_BELOW_MIX &&
     onsetPeak !== null &&
-    onsetPeak > ONSET_SILENT_DBFS;
+    onsetPeak > ONSET_SILENT_DBFS &&
+    onsetRelative !== null &&
+    onsetRelative > ONSET_BELOW_MIX;
 
   return {
     usable,
     openLevel: openLevel === null ? null : Number(openLevel.toFixed(1)),
     relativeLevel,
     onsetPeak: onsetPeak === null ? null : Number(onsetPeak.toFixed(1)),
+    onsetRelative,
   };
 }
 
@@ -382,6 +420,47 @@ export function leadStemFor(role) {
 }
 
 /**
+ * The heads that have an instrument behind them on this record.
+ *
+ * A head the band does not contain is not empty — it is bleed, and on these
+ * recordings it is loud bleed. Measured on the solo cut of So What, which
+ * has no guitarist: the `guitar` head sits at −33.3 dB mean with peaks to
+ * −1.7 dB, and what is in it is Miles and Coltrane. `rhythm` is assembled
+ * from every head except the lead, so that horn goes straight back into the
+ * mix that is supposed to have had the horn taken out of it — which is why
+ * Giant Steps plays a tenor saxophone in "Only the rhythm section".
+ *
+ * So the credits decide. Every head a credited role could plausibly be is
+ * kept, deliberately generously: a player billed "Piano, Trumpet" holds both
+ * `piano` and `other` open, because including a head that turns out to be
+ * bleed only restores today's behaviour, while dropping one that holds a
+ * real part silently deletes a musician.
+ *
+ * Empty or unreadable credits mean no opinion, and no opinion means every
+ * head — the same answer this had before there was a check.
+ */
+export function headsInCredits(personnel) {
+  const roles = (personnel ?? [])
+    .map((credit) => String(credit?.role ?? "").toLowerCase())
+    .filter(Boolean);
+  if (roles.length === 0) return new Set(STEM_HEADS);
+
+  const heads = new Set();
+  for (const text of roles) {
+    let matched = false;
+    for (const [pattern, head] of HEAD_BY_INSTRUMENT) {
+      if (pattern.test(text)) {
+        heads.add(head);
+        matched = true;
+      }
+    }
+    // Anything the list does not name is a horn, which is where `other` goes.
+    if (!matched) heads.add("other");
+  }
+  return heads;
+}
+
+/**
  * Split one clip into its playable variants.
  *
  * `clipId` is the clip's filename stem, and the variants are named after it
@@ -397,7 +476,9 @@ export function leadStemFor(role) {
  * `role` is the soloist's instrument, which decides which head is the lead
  * and therefore what the rhythm mix has left in it.
  */
-export async function separateClip({ clipId, leadIn, role, onProgress }) {
+export async function separateClip({
+  clipId, leadIn, role, personnel, previous, onProgress,
+}) {
   const log = onProgress ?? (() => {});
   const mixFile = path.join(AUDIO_DIR, `${clipId}.mp3`);
   if (!existsSync(mixFile)) throw new Error(`No clip on disk: ${clipId}.mp3`);
@@ -419,6 +500,7 @@ export async function separateClip({ clipId, leadIn, role, onProgress }) {
 
     const stem = (name) => path.join(produced, `${name}.wav`);
     const leadHead = leadStemFor(role);
+    const present = headsInCredits(personnel);
     const results = {};
 
     /*
@@ -432,31 +514,57 @@ export async function separateClip({ clipId, leadIn, role, onProgress }) {
       if (inputs.length === 0) return;
 
       const out = path.join(AUDIO_DIR, `${clipId}--${id}.mp3`);
-      const verdict =
-        inputs.length === 1
-          ? await judgeStem({ stemFile: inputs[0], mixFile, leadIn })
-          : null;
 
       log(`encoding ${id}`);
       await encodeStem(inputs, out, {
         lift: lift && inputs.length === 1 ? await measuredLift(inputs[0]) : 0,
       });
 
+      /*
+       * A human yes is about a sound, and the sound is the heads that were
+       * mixed. Re-separating the same clip with the same model and the same
+       * heads reproduces it, so the ruling stands; change the heads and it
+       * is a different mix nobody has heard, so the ruling goes.
+       */
+      const before = previous?.[id];
+      const sameMix =
+        Array.isArray(before?.heads) &&
+        before.heads.length === heads.length &&
+        before.heads.every((head, i) => head === heads[i]);
+
       results[id] = {
         audio: `/api/audio/${clipId}--${id}.mp3`,
         head: heads.length === 1 ? heads[0] : undefined,
+        heads,
+        ...(sameMix && before.approved !== undefined ? { approved: before.approved } : {}),
         /*
-         * A mix of several heads is judged after it is assembled, because
-         * what matters is whether the thing that will be played has anything
-         * in it. Judging it before would mean judging parts nobody hears
-         * on their own.
+         * The level comes off the raw head and the opening off the encode —
+         * see `judgeStem`. A mix of several heads has no single raw head to
+         * point at, and judging its parts separately would be judging things
+         * nobody hears on their own, so it is measured whole after it is
+         * assembled.
          */
-        ...(verdict ?? (await judgeStem({ stemFile: out, mixFile, leadIn }))),
+        ...(await judgeStem({
+          stemFile: inputs.length === 1 ? inputs[0] : out,
+          playedFile: out,
+          mixFile,
+          leadIn,
+        })),
       };
     };
 
     await write("lead", [leadHead]);
-    await write("rhythm", STEM_HEADS.filter((head) => head !== leadHead), { lift: false });
+    /*
+     * Everything but the lead voice — and nothing the band does not have.
+     * The lead head itself is kept in `present` regardless: the soloist is
+     * on the record by definition, whatever the credits managed to say about
+     * their instrument.
+     */
+    await write(
+      "rhythm",
+      STEM_HEADS.filter((head) => head !== leadHead && present.has(head)),
+      { lift: false },
+    );
     /*
      * Bass is its own mode rather than a special case of lead: on most of
      * these records the bassist is not the soloist, and hearing the walk on
@@ -478,16 +586,38 @@ export async function separateClip({ clipId, leadIn, role, onProgress }) {
       const file = path.join(second, fallback, clipId, "bass.wav");
       if (!existsSync(file)) continue;
 
-      const verdict = await judgeStem({ stemFile: file, mixFile, leadIn });
+      /*
+       * Encoded into the work directory rather than over the answer already
+       * on disk. The opening can only be judged on the encode, and a verdict
+       * that comes back worse must leave the first model's bass where it is
+       * rather than having replaced it on the way to finding that out.
+       */
+      const candidate = path.join(second, `${clipId}--bass.mp3`);
+      await encodeStem([file], candidate, { lift: await measuredLift(file) });
+      const verdict = await judgeStem({
+        stemFile: file,
+        playedFile: candidate,
+        mixFile,
+        leadIn,
+      });
       // Only kept if it is actually better; a second empty answer is not news.
       if (!verdict.usable) continue;
 
       const out = path.join(AUDIO_DIR, `${clipId}--bass.mp3`);
-      await encodeStem([file], out, { lift: await measuredLift(file) });
+      await rename(candidate, out).catch(async () => {
+        await copyFile(candidate, out);
+      });
+      const before = previous?.bass;
       results.bass = {
         audio: `/api/audio/${clipId}--bass.mp3`,
         head: "bass",
+        heads: ["bass"],
         model: fallback,
+        // Same head, and a fallback only reached when the first model found
+        // nothing — so a standing yes was given for this file, not that one.
+        ...(before?.model === fallback && before.approved !== undefined
+          ? { approved: before.approved }
+          : {}),
         ...verdict,
       };
     }

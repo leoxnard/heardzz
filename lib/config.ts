@@ -141,17 +141,24 @@ export function stemsOf(solo: Solo, level: Level): StemSet | undefined {
 /**
  * Can this record be dealt at this stem, on this level?
  *
- * Two things have to be true and they fail for different reasons. The files
+ * Three things have to be true and they fail for different reasons. The files
  * may not exist yet, because splitting a record is a separate pass over the
- * library and a record added this morning has not had it. And the variant may
+ * library and a record added this morning has not had it. The variant may
  * exist and be empty: a piano trio has no horn to lift out, and a tune that
  * opens on an unaccompanied pickup has no rhythm section in its first half
- * second. Both end the same way — the record is not dealt — but only the
- * second one is a judgement about the music.
+ * second. And it may be there, and sound, and still not be the thing the
+ * mode promises — a separation that ran and left the whole band in the lead
+ * stem measures like a success and plays like the record.
+ *
+ * The last of those is not a measurement, so it is not measured: somebody
+ * listens and says yes. A stem nobody has ruled on is not dealt. That is
+ * deliberately the strict direction — a new record arrives offering the full
+ * mix only, and gains the other modes as they are checked.
  */
 export function hasStem(solo: Solo, level: Level, stem: StemChoice): boolean {
   if (stem === "full") return true;
-  return stemsOf(solo, level)?.[stem]?.usable === true;
+  const variant = stemsOf(solo, level)?.[stem];
+  return variant?.usable === true && variant.approved === true;
 }
 
 /**
@@ -171,14 +178,26 @@ export function availableStems(solo: Solo, level: Level): StemChoice[] {
  * The stem a screen actually plays.
  *
  * Mirrors what `playedConfig` does for levels, and for the same reason: the
- * stored setting belongs to the player, not to the pool they happen to be
- * looking at. If nothing in the pool can be played at the chosen stem, the
- * screen falls back to the full mix rather than showing an empty board, and
- * the setting is left where it was.
+ * stored setting belongs to the player, not to the record they happen to
+ * have been dealt. If the record in hand has no such layer, the screen plays
+ * the full mix rather than an empty board, and the setting is left where it
+ * was — so the next record that does have one gets played at it.
+ *
+ * Asked of the record and not of the pool. That distinction is the whole
+ * point: the pool is already filtered to records that have the layer, so a
+ * pool-wide answer reads "yes" and stays "yes" for the one record that got
+ * past the filter — today's daily, which is pinned by id from the moment it
+ * is opened and does not leave the pool when a setting moves under it. That
+ * combination played the whole record while the picker said "Only the
+ * soloist", which is a lie the round has no way to notice.
  */
-export function playedStem(config: GameConfig, pool: Solo[], level: Level): StemChoice {
+export function playedStem(
+  config: GameConfig,
+  solo: Solo | null | undefined,
+  level: Level,
+): StemChoice {
   if (config.stem === "full") return "full";
-  return pool.some((solo) => hasStem(solo, level, config.stem)) ? config.stem : "full";
+  return solo && hasStem(solo, level, config.stem) ? config.stem : "full";
 }
 
 /**

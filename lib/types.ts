@@ -40,6 +40,17 @@ export interface StemVariant {
   head?: string;
 
   /**
+   * Every head that went into it, in the order they were mixed.
+   *
+   * Recorded because it is the thing that changes underneath an approval.
+   * `rhythm` used to be assembled from every head except the lead, bleed
+   * included, and narrowing it to the heads the band actually has produces
+   * a different mix of the same record — which a human yes was not given
+   * for. A re-split carries an approval forward only when this matches.
+   */
+  heads?: string[];
+
+  /**
    * The separator that produced it, when it was not the usual one.
    *
    * Only the bass ever sets this: the six-stem model loses a plucked upright
@@ -55,15 +66,50 @@ export interface StemVariant {
    * so `lead` comes back as separation residue rather than as a part. The
    * pool filters on this, because dealing a silent round is worse than
    * dealing an easy one.
+   *
+   * A measurement, and only half the answer: see `approved`.
    */
   usable: boolean;
+
+  /**
+   * Whether somebody has listened to it and said yes.
+   *
+   * `usable` catches silence, which is what a meter can catch. It cannot
+   * catch a separation that ran and produced nothing worth playing — on
+   * Autumn Leaves the lead stem measures 2.3 dB *louder* than the record it
+   * came out of, because the model put the whole band in it, and no
+   * threshold over the library separates that from the cuts that worked.
+   * Nor can a meter know that `other` on a quintet holds both horns, so the
+   * "soloist" is Cannonball and Miles together.
+   *
+   * So the last word is a person's. Undefined means nobody has been asked
+   * yet, and an unasked stem is not dealt — the game would rather offer
+   * three modes that are right than four where one is a coin toss.
+   */
+  approved?: boolean;
 
   /** Mean dBFS over the opening two seconds. */
   openLevel: number | null;
   /** How far that sits under the full mix. The number the verdict rests on. */
   relativeLevel: number | null;
-  /** Loudest sample in the opening half-second — the first ladder rung. */
+  /**
+   * Loudest sample in the opening half-second — the first ladder rung.
+   * Measured on the encoded file the round plays, lift included, because
+   * that is the one whose audibility is in question.
+   */
   onsetPeak: number | null;
+  /**
+   * How far that opening sits under the mix's own opening.
+   *
+   * The number that keeps a round from opening on nothing. St. Thomas starts
+   * on drums alone, so its `lead` at the top of the tune is bleed — loud
+   * enough in absolute terms to clear a silence floor, 33 dB under the
+   * record it came from, and half a second of nothing to play.
+   *
+   * Absent on stems judged before this was measured; treated as a pass, so
+   * an old verdict is never silently overturned by a missing number.
+   */
+  onsetRelative?: number | null;
 }
 
 export type StemSet = Partial<Record<StemId, StemVariant>>;

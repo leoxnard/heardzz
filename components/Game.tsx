@@ -190,12 +190,6 @@ export function Game({
   }, [solos, config.verifiedOnly, config.stem, level]);
 
   /*
-   * Nothing in the pool can be played at the chosen stem, so the sitting
-   * plays the full mix instead. The stored setting is untouched.
-   */
-  const stem = useMemo(() => playedStem(config, pool, level), [config, pool, level]);
-
-  /*
    * What the reveal plays, which is a different question from what the round
    * played. A round heard through one layer is a puzzle; the answer to it is
    * the record, whole. So this opens on the full mix however the round was
@@ -226,6 +220,24 @@ export function Game({
       ? (pool[practiceIndex] ?? null)
       : pickSequential(pool, practiceIndex);
   }, [pool, solos, mode, dateKey, record, practiceIndex, ordered]);
+
+  /*
+   * The layer this round actually plays.
+   *
+   * Has to be asked of the record rather than of the pool. Practice deals
+   * out of a pool that is already filtered to records with the layer, so
+   * changing the setting there changes the record and this always agrees
+   * with it. The daily does not: it is pinned by id once opened, so a stem
+   * chosen mid-round lands on a record that was never selected for it. That
+   * used to play the full mix while the picker read "Only the soloist";
+   * now the fallback is visible, and `stemNote` says so in settings.
+   */
+  const stem = useMemo(() => playedStem(config, solo, level), [config, solo, level]);
+
+  /* One line for the settings panel when the record in hand has no such
+     layer — the same courtesy `levelNote` does for levels. */
+  const stemNote =
+    config.stem !== "full" && stem === "full" ? t("stem.notOnThisRecord") : undefined;
 
   /*
    * A record with no marked solo cannot be asked who is soloing on it.
@@ -747,6 +759,7 @@ export function Game({
           config={storedConfig}
           levels={levelsFor(soloLevels)}
           levelNote={levelNote}
+          stemNote={stemNote}
           onPatch={patch}
           onReset={reset}
           onClose={() => setPanel(null)}

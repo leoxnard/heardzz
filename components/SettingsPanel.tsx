@@ -16,13 +16,19 @@ interface SettingsPanelProps {
   levels?: Level[];
   /** One line saying what the screen underneath does with the level. */
   levelNote?: string;
+  /**
+   * One line for when the record in hand has no such layer, so the sitting
+   * is playing the full mix whatever this picker says. The setting itself
+   * stays put — it belongs to the player, not to one record.
+   */
+  stemNote?: string;
   onPatch: (changes: Partial<GameConfig>) => void;
   onReset: () => void;
   onClose: () => void;
 }
 
 export function SettingsPanel({
-  config, levels = LEVELS, levelNote, onPatch, onReset, onClose,
+  config, levels = LEVELS, levelNote, stemNote, onPatch, onReset, onClose,
 }: SettingsPanelProps) {
   function setRung(index: number, ms: number) {
     const next = [...config.ladderMs];
@@ -80,7 +86,10 @@ export function SettingsPanel({
         </ul>
       </Section>
 
-      <Section title={t("settings.stems")} help={t("settings.stemsHelp")}>
+      <Section
+        title={t("settings.stems")}
+        help={stemNote ? `${t("settings.stemsHelp")} ${stemNote}` : t("settings.stemsHelp")}
+      >
         <ul className="space-y-2">
           {STEMS.map((stem) => {
             const active = stem.id === config.stem;
