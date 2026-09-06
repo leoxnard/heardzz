@@ -102,8 +102,30 @@ console.log(`Splitting ${targets.length} cut${targets.length === 1 ? "" : "s"}.\
 const done = new Map();
 
 let empty = 0;
-for (const cut of targets) {
-  process.stdout.write(`${cut.label}\n`);
+let failed = 0;
+let reused = 0;
+let split = 0;
+const startedAt = Date.now();
+
+/** Whole seconds as h:mm:ss, for a run measured in hours. */
+function elapsed(ms) {
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+for (const [index, cut] of targets.entries()) {
+  /*
+   * Numbered and stamped because this runs for hours behind `docker exec -d`
+   * with nothing to look at but a log file. A line that says only which
+   * record is in hand cannot answer "how far along is it" or "is it still
+   * moving", which are the two questions anybody actually has.
+   */
+  process.stdout.write(
+    `[${index + 1}/${targets.length}] ${elapsed(Date.now() - startedAt)}  ${cut.label}\n`,
+  );
   try {
     const key = jobKey(cut);
     const already = done.get(key);
@@ -111,6 +133,7 @@ for (const cut of targets) {
       console.log("  same clip and same lead as a cut already done — reusing it\n");
       cut.apply(structuredClone(already));
       await writeLibrary(library);
+      reused += 1;
       continue;
     }
 
@@ -125,6 +148,7 @@ for (const cut of targets) {
 
     cut.apply(stems);
     done.set(key, stems);
+    split += 1;
 
     for (const [id, variant] of Object.entries(stems)) {
       const verdict = variant.usable ? "ok" : "EMPTY — will not be dealt";
@@ -140,6 +164,7 @@ for (const cut of targets) {
     await writeLibrary(library);
     console.log();
   } catch (error) {
+    failed += 1;
     console.log(`  failed: ${error.message.split("\n")[0]}\n`);
   }
 }
@@ -149,4 +174,17 @@ if (empty > 0) {
     `${empty} variant(s) had nothing in them and are marked unusable. ` +
       "That is the expected answer for a record with no lead voice.",
   );
+}
+
+/*
+ * Always printed, and last. Without it a log that stops has two readings —
+ * finished, or died — and no way to tell them apart.
+ */
+console.log(
+  `\nDone in ${elapsed(Date.now() - startedAt)}. ` +
+    `${split} separated, ${reused} reused, ${failed} failed, ` +
+    `${targets.length} cut(s) in all.`,
+);
+if (failed > 0) {
+  console.log("The failures are named above and were left unsplit; re-running retries them.");
 }
