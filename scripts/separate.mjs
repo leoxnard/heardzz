@@ -259,6 +259,53 @@ const ONSET_SILENT_DBFS = -40;
 const ONSET_BELOW_MIX = -25;
 
 /**
+ * Measure the half second a round opens on, against the mix's own.
+ *
+ * Always on the encoded file the round plays, lift included, because the
+ * question is whether a listener hears anything — and the lift is up to
+ * 12 dB of real, audible difference. Judging the opening on the raw head
+ * instead loses three cuts across the library whose parts are quiet but
+ * genuinely there, Scott LaFaro's bass among them.
+ */
+export async function judgeOnset({ playedFile, mixFile, leadIn }) {
+  const onsetPeak = await peakInWindow(playedFile, leadIn, ONSET_WINDOW);
+  const mixOnset = await peakInWindow(mixFile, leadIn, ONSET_WINDOW);
+
+  return {
+    onsetPeak: onsetPeak === null ? null : Number(onsetPeak.toFixed(1)),
+    onsetRelative:
+      onsetPeak !== null && mixOnset !== null
+        ? Number((onsetPeak - mixOnset).toFixed(1))
+        : null,
+  };
+}
+
+/**
+ * The verdict, given the four numbers.
+ *
+ * Separate from the measuring so that a pass which can only honestly
+ * re-measure some of them can still reach the same conclusion from the rest.
+ * `rejudge-stems` is that pass: the raw head it would need for the level
+ * only ever existed inside a temp directory.
+ */
+export function stemIsUsable({ openLevel, relativeLevel, onsetPeak, onsetRelative }) {
+  return (
+    openLevel !== null &&
+    openLevel !== undefined &&
+    openLevel > SILENT_DBFS &&
+    relativeLevel !== null &&
+    relativeLevel !== undefined &&
+    relativeLevel > EMPTY_BELOW_MIX &&
+    onsetPeak !== null &&
+    onsetPeak !== undefined &&
+    onsetPeak > ONSET_SILENT_DBFS &&
+    onsetRelative !== null &&
+    onsetRelative !== undefined &&
+    onsetRelative > ONSET_BELOW_MIX
+  );
+}
+
+/**
  * Judge one stem against the mix it came out of.
  *
  * Two files, deliberately, because the two questions want different ones.
@@ -281,36 +328,20 @@ const ONSET_BELOW_MIX = -25;
 export async function judgeStem({ stemFile, playedFile, mixFile, leadIn }) {
   const openLevel = await levelAtMarker(stemFile, leadIn, 2);
   const mixLevel = await levelAtMarker(mixFile, leadIn, 2);
-  const onsetPeak = await peakInWindow(playedFile ?? stemFile, leadIn, ONSET_WINDOW);
-  const mixOnset = await peakInWindow(mixFile, leadIn, ONSET_WINDOW);
+  const onset = await judgeOnset({ playedFile: playedFile ?? stemFile, mixFile, leadIn });
 
   const relativeLevel =
     openLevel !== null && mixLevel !== null
       ? Number((openLevel - mixLevel).toFixed(1))
       : null;
 
-  const onsetRelative =
-    onsetPeak !== null && mixOnset !== null
-      ? Number((onsetPeak - mixOnset).toFixed(1))
-      : null;
-
-  const usable =
-    openLevel !== null &&
-    openLevel > SILENT_DBFS &&
-    relativeLevel !== null &&
-    relativeLevel > EMPTY_BELOW_MIX &&
-    onsetPeak !== null &&
-    onsetPeak > ONSET_SILENT_DBFS &&
-    onsetRelative !== null &&
-    onsetRelative > ONSET_BELOW_MIX;
-
-  return {
-    usable,
+  const measured = {
     openLevel: openLevel === null ? null : Number(openLevel.toFixed(1)),
     relativeLevel,
-    onsetPeak: onsetPeak === null ? null : Number(onsetPeak.toFixed(1)),
-    onsetRelative,
+    ...onset,
   };
+
+  return { usable: stemIsUsable(measured), ...measured };
 }
 
 /* ------------------------------------------------------------------

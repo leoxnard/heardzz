@@ -9,10 +9,18 @@
    question — and `split-stems` will not revisit it, because the files exist
    and that is all it checks.
 
-   This reads the mp3s that are already there, applies the current rule, and
-   writes the verdicts back. No separator, no model weights, no gigabyte: it
-   is ffmpeg over files that have already been cut, which is minutes rather
-   than hours and runs on a machine with no venv at all.
+   This reads the mp3s that are already there, re-measures what can honestly
+   be measured on them, and writes the verdicts back. No separator, no model
+   weights, no gigabyte: it is ffmpeg over files that have already been cut,
+   which is minutes rather than hours and runs on a machine with no venv at
+   all.
+
+   What it will not do is second-guess the level. That number belongs to the
+   raw head, which is gone, and re-reading it off the encode reads 12 dB
+   loud — enough to hand back exactly the stems this is meant to remove. So
+   the level stands as it was measured and only the opening is re-judged,
+   which makes this a pass that can take a stem out of play and never put
+   one back in.
 
    `--prune` deletes the ones that come back empty. The game does not need
    this — `usable: false` is what keeps a stem out of the pool, and the file
@@ -27,7 +35,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { AUDIO_DIR, readLibrary, writeLibrary } from "./extract.mjs";
-import { judgeStem, STEM_IDS } from "./separate.mjs";
+import { judgeOnset, stemIsUsable, STEM_IDS } from "./separate.mjs";
 
 const args = process.argv.slice(2);
 const write = args.includes("--write");
@@ -97,29 +105,38 @@ for (const cut of cuts) {
     }
 
     /*
-     * One file for both questions. The raw separator output is long gone —
-     * it only ever existed inside a temp directory — so the level is
-     * re-measured on the encode, which reads a little more generously than
-     * the original judgement did by exactly the lift that was applied. That
-     * is a real difference and it only ever moves a verdict towards "keep",
-     * so it cannot be what makes a round silent.
+     * Only the opening is re-measured. The level wants the raw separator
+     * output, and that only ever existed inside a temp directory — all that
+     * is left on disk is the encode, which has the lift on it.
+     *
+     * Measuring the level there anyway looks like a small inaccuracy in the
+     * generous direction and is not. It reads up to 12 dB louder, which is
+     * enough to promote the exact failure this whole pass exists to catch:
+     * a separation that ran and left the entire band in the lead stem, so
+     * the "soloist" measures as loud as the record. Run that way over the
+     * live library it moved seven of them from empty to playable, Stolen
+     * Moments among them at 7.6 dB *above* its own mix.
+     *
+     * So the stored level stands, the opening is measured fresh, and the
+     * verdict is taken from both. Which means this pass can only ever take
+     * a stem out of play, never put one in on numbers it did not measure.
      */
-    const verdict = await judgeStem({
-      stemFile: file,
-      playedFile: file,
-      mixFile,
-      leadIn: cut.leadIn,
+    const onset = await judgeOnset({ playedFile: file, mixFile, leadIn: cut.leadIn });
+    const usable = stemIsUsable({
+      openLevel: variant.openLevel,
+      relativeLevel: variant.relativeLevel,
+      ...onset,
     });
 
     const was = variant.usable;
-    Object.assign(variant, verdict);
+    Object.assign(variant, onset, { usable });
 
-    if (was !== verdict.usable) {
+    if (was !== usable) {
       changed += 1;
       console.log(
         `${was ? "-" : "+"} ${cut.label.padEnd(38)} ${id.padEnd(6)} ` +
           `${was ? "ok → EMPTY" : "EMPTY → ok"}  ` +
-          `(onset ${verdict.onsetPeak} dBFS, ${verdict.onsetRelative} dB under the mix)`,
+          `(opening ${onset.onsetPeak} dBFS, ${onset.onsetRelative} dB against the mix)`,
       );
     }
 
