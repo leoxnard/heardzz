@@ -23,10 +23,10 @@ import {
   recordResult, rungIndex, skipAttempt, submitGuess, unlockedMs,
 } from "@/lib/game";
 import {
-  LEVELS, activeFields, hasStem, levelOf, levelsFor, playedClip, playedConfig,
-  playedStem, type LevelId,
+  LEVELS, activeFields, availableStems, hasStem, levelOf, levelsFor, playedClip,
+  playedConfig, playedStem, type LevelId,
 } from "@/lib/config";
-import type { Field, RoundState, Solo } from "@/lib/types";
+import type { Field, RoundState, Solo, StemChoice } from "@/lib/types";
 
 /* ------------------------------------------------------------------
    The three questions a record can be asked.
@@ -195,6 +195,15 @@ export function Game({
    */
   const stem = useMemo(() => playedStem(config, pool, level), [config, pool, level]);
 
+  /*
+   * What the reveal plays, which is a different question from what the round
+   * played. A round heard through one layer is a puzzle; the answer to it is
+   * the record, whole. So this opens on the full mix however the round was
+   * played, and the switch below is there for anybody who wants to go back
+   * and hear what they were actually given.
+   */
+  const [revealStem, setRevealStem] = useState<StemChoice>("full");
+
   const dateKey = useMemo(() => todayKey(), []);
 
   const solo = useMemo<Solo | null>(() => {
@@ -270,8 +279,11 @@ export function Game({
     setRound(createRound(solo.id));
     recorded.current = null;
     setInputs({});
+    setRevealStem("full");
   }, [solo, mode, dateKey, record, recordLoaded, configLoaded, config.level]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  const revealed = round?.status === "won" || round?.status === "lost";
 
   /*
    * Which file is in play: the cut the level asks for, at the stem chosen.
@@ -281,13 +293,12 @@ export function Game({
    * when the level or the stem was changed after it had already been played.
    */
   const clip = useMemo(
-    () => (solo ? playedClip(solo, level, stem) : null),
-    [solo, level, stem],
+    () => (solo ? playedClip(solo, level, revealed ? revealStem : stem) : null),
+    [solo, level, stem, revealed, revealStem],
   );
 
   const audio = useSoloAudio(clip?.audio ?? null, config.volume);
 
-  const revealed = round?.status === "won" || round?.status === "lost";
 
   /**
    * When the round became revealed, so Enter can refuse to act on it for a
@@ -631,6 +642,10 @@ export function Game({
               nextLevel={levels.find((l) => l.id === (pendingLevel ?? level.id)) ?? level}
               onLevel={chooseNextLevel}
               onPlayFull={play}
+              playedLevel={level}
+              stems={availableStems(solo, level)}
+              stem={revealStem}
+              onStem={setRevealStem}
               onNext={mode === "practice" ? advance : undefined}
               keysHint={t(mode === "practice" ? "round.keysHintNext" : "round.keysHintRevealed")}
             />

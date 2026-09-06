@@ -5,8 +5,8 @@ import Link from "next/link";
 import { formatSnippet } from "@/lib/audio";
 import { formatCountdown, msUntilTomorrow } from "@/lib/daily";
 import { t } from "@/lib/i18n";
-import type { Level, LevelId } from "@/lib/config";
-import type { RoundState, Solo } from "@/lib/types";
+import { STEMS, type Level, type LevelId } from "@/lib/config";
+import type { RoundState, Solo, StemChoice } from "@/lib/types";
 
 interface ResultProps {
   solo: Solo;
@@ -22,11 +22,22 @@ interface ResultProps {
   onLevel: (id: LevelId) => void;
   onPlayFull: () => void;
   onNext?: () => void;
+  /**
+   * The level this round was played at — not the one the next round will be.
+   *
+   * The screen answers what was asked, and only the levels that open at the
+   * solo entry ask who is soloing.
+   */
+  playedLevel: Level;
+  /** Layers of this record that exist, the full mix always among them. */
+  stems: StemChoice[];
+  stem: StemChoice;
+  onStem: (stem: StemChoice) => void;
 }
 
 export function Result({
   solo, state, heardMs, share, isDaily, keysHint, levels, nextLevel, onLevel,
-  onPlayFull, onNext,
+  onPlayFull, onNext, playedLevel, stems, stem, onStem,
 }: ResultProps) {
   const won = state.status === "won";
   const soloist = solo.soloist || solo.artist;
@@ -71,7 +82,15 @@ export function Result({
           <dd className="type-display mt-2 text-3xl text-paper">{solo.song}</dd>
           <dd className="type-body mt-1 text-sm text-paper-dim">{solo.album}</dd>
         </div>
-        {soloist && soloist !== solo.artist && (
+        {/*
+          * Only asked, and only answered, when the round opened at the solo
+          * entry. From the top of the tune you heard the head — often the
+          * whole front line playing it together — and naming one of them as
+          * "the soloist" answers a question nobody was asked. Records with
+          * several soloists make that plainer: the name would be whichever
+          * entry was dealt, not whoever you heard.
+          */}
+        {playedLevel.start === "solo" && soloist && soloist !== solo.artist && (
           <div className="border-b border-ink-edge py-4">
             <dt className="type-eyebrow text-paper-faint">{t("result.answerSoloist")}</dt>
             <dd className="type-display mt-2 text-3xl text-paper">{soloist}</dd>
@@ -86,9 +105,9 @@ export function Result({
             <dd className="mt-3">
               <ul className="space-y-1">
                 {solo.personnel.map((credit) => {
-                  // The soloist is the one you were actually listening to;
-                  // the rest of the band is context.
-                  const solos = credit.name === soloist;
+                  // Marked only when the round was about them — same reason
+                  // the block above is hidden from the head levels.
+                  const solos = playedLevel.start === "solo" && credit.name === soloist;
                   return (
                     <li key={credit.name} className="flex flex-wrap gap-x-3 text-sm">
                       <span className={solos ? "type-body font-semibold text-flame" : "type-body text-paper"}>
@@ -116,6 +135,33 @@ export function Result({
         <p className="type-body mt-6 border-l-2 border-flame pl-4 text-sm text-paper-dim">
           {solo.note}
         </p>
+      )}
+
+      {stems.length > 1 && (
+        <div className="mt-8">
+          <span className="type-eyebrow text-paper-faint">{t("result.hearLayer")}</span>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {stems.map((id) => {
+              const copy = STEMS.find((entry) => entry.id === id);
+              const active = id === stem;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onStem(id)}
+                  aria-pressed={active}
+                  className={`type-eyebrow border px-4 py-2 transition-colors duration-150 ${
+                    active
+                      ? "border-flame bg-flame text-ink"
+                      : "border-ink-edge text-paper-dim hover:border-paper-faint hover:text-paper"
+                  }`}
+                >
+                  {copy?.label ?? id}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       <div className="mt-8 flex flex-wrap gap-3">

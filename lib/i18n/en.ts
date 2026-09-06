@@ -89,6 +89,7 @@ export const en = {
     personnel: "On the date",
     from: "from",
     recordedIn: "Recorded {year}",
+    hearLayer: "Hear it as",
     listenFull: "Hear the whole clip",
     openSource: "Open on YouTube",
     share: "Copy result",

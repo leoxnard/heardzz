@@ -123,6 +123,9 @@ export interface Stem {
   blurb: string;
 }
 
+/** Every stem there is, in the order they are offered. */
+const STEM_IDS: StemId[] = ["lead", "rhythm", "bass"];
+
 export const STEMS: Stem[] = [
   { id: "full", label: "The record", blurb: "As it was pressed" },
   { id: "lead", label: "Only the soloist", blurb: "Whoever is out front, lifted out of the band" },
@@ -149,6 +152,19 @@ export function stemsOf(solo: Solo, level: Level): StemSet | undefined {
 export function hasStem(solo: Solo, level: Level, stem: StemChoice): boolean {
   if (stem === "full") return true;
   return stemsOf(solo, level)?.[stem]?.usable === true;
+}
+
+/**
+ * The layers of this record that can actually be heard, for the cut in play.
+ *
+ * Always at least the full mix. The rest are whatever came back with
+ * something in them — which is a property of the record and the moment, not
+ * of the library: a piano trio has no horn to offer, and a tune that opens
+ * on an unaccompanied pickup has no rhythm section to offer at its own top.
+ */
+export function availableStems(solo: Solo, level: Level): StemChoice[] {
+  const stems = stemsOf(solo, level);
+  return ["full", ...STEM_IDS.filter((id) => stems?.[id]?.usable)];
 }
 
 /**
