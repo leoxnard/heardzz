@@ -17,7 +17,9 @@
    ------------------------------------------------------------------ */
 
 import { readLibrary, writeLibrary } from "./extract.mjs";
-import { ensureSeparator, separateClip, separatorIsReady } from "./separate.mjs";
+import {
+  ensureSeparator, headsInCredits, leadStemFor, separateClip, separatorIsReady,
+} from "./separate.mjs";
 
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
@@ -66,6 +68,21 @@ function basename(audio) {
   return audio.split("/").pop().replace(/\.mp3$/, "");
 }
 
+/**
+ * What makes two cuts the same job.
+ *
+ * A recording with four soloists on it is four entries sharing one head
+ * clip, and separating it four times produces four identical sets of files
+ * — an hour of a 2013 laptop CPU each, for nothing. What actually varies
+ * between siblings is which head is the lead and which heads the credits
+ * allow into the rhythm mix, so that is the key; everything with the same
+ * answer to both gets the first one's result.
+ */
+function jobKey(cut) {
+  const heads = [...headsInCredits(cut.personnel)].sort().join("+");
+  return `${cut.clipId}:${leadStemFor(cut.role)}:${heads}`;
+}
+
 const targets = cuts.filter((cut) => force || !cut.has());
 
 if (targets.length === 0) {
@@ -81,10 +98,22 @@ if (!separatorIsReady()) {
 
 console.log(`Splitting ${targets.length} cut${targets.length === 1 ? "" : "s"}.\n`);
 
+/** Results already produced in this run, by the job they answer. */
+const done = new Map();
+
 let empty = 0;
 for (const cut of targets) {
   process.stdout.write(`${cut.label}\n`);
   try {
+    const key = jobKey(cut);
+    const already = done.get(key);
+    if (already) {
+      console.log("  same clip and same lead as a cut already done — reusing it\n");
+      cut.apply(structuredClone(already));
+      await writeLibrary(library);
+      continue;
+    }
+
     const stems = await separateClip({
       clipId: cut.clipId,
       leadIn: cut.leadIn,
@@ -95,6 +124,7 @@ for (const cut of targets) {
     });
 
     cut.apply(stems);
+    done.set(key, stems);
 
     for (const [id, variant] of Object.entries(stems)) {
       const verdict = variant.usable ? "ok" : "EMPTY — will not be dealt";

@@ -492,6 +492,26 @@ export function headsInCredits(personnel) {
 }
 
 /**
+ * What a variant of a clip is called on disk.
+ *
+ * `lead` and `rhythm` carry the head they were built around, and that is not
+ * decoration. A recording with several soloists on it is several entries in
+ * the library sharing one head clip — Stolen Moments is four — and each of
+ * them resolves its own lead head from its own soloist. Named by the cut
+ * alone they all land on `<clip>--lead.mp3`, so splitting the fourth entry
+ * overwrites the first three, and every one of them ends up pointing at
+ * whichever head happened to go last. That shipped: three entries claiming
+ * `other` and one claiming `piano`, all four naming the same file, at most
+ * one of them telling the truth.
+ *
+ * `bass` is always the bass head, so it has nothing to disambiguate and
+ * keeps its plain name.
+ */
+export function stemFileName(clipId, id, leadHead) {
+  return id === "bass" ? `${clipId}--bass.mp3` : `${clipId}--${id}-${leadHead}.mp3`;
+}
+
+/**
  * Split one clip into its playable variants.
  *
  * `clipId` is the clip's filename stem, and the variants are named after it
@@ -544,7 +564,8 @@ export async function separateClip({
       const inputs = heads.map(stem).filter((file) => existsSync(file));
       if (inputs.length === 0) return;
 
-      const out = path.join(AUDIO_DIR, `${clipId}--${id}.mp3`);
+      const name = stemFileName(clipId, id, leadHead);
+      const out = path.join(AUDIO_DIR, name);
 
       log(`encoding ${id}`);
       await encodeStem(inputs, out, {
@@ -564,7 +585,7 @@ export async function separateClip({
         before.heads.every((head, i) => head === heads[i]);
 
       results[id] = {
-        audio: `/api/audio/${clipId}--${id}.mp3`,
+        audio: `/api/audio/${name}`,
         head: heads.length === 1 ? heads[0] : undefined,
         heads,
         ...(sameMix && before.approved !== undefined ? { approved: before.approved } : {}),
@@ -659,7 +680,19 @@ export async function separateClip({
   }
 }
 
-/** Every file `separateClip` may have written for a clip. */
+/**
+ * Every file `separateClip` may have written for a clip.
+ *
+ * Enumerated rather than looked up, because this is what deleting a record
+ * sweeps up behind it and a name it does not think of is a file left on the
+ * volume forever. Includes the unsuffixed `--lead`/`--rhythm` that entries
+ * split before `stemFileName` are still named by, so removing an old record
+ * removes its old files too.
+ */
 export function stemFilesFor(clipId) {
-  return STEM_IDS.map((id) => `${clipId}--${id}.mp3`);
+  const names = [`${clipId}--bass.mp3`, `${clipId}--lead.mp3`, `${clipId}--rhythm.mp3`];
+  for (const head of STEM_HEADS) {
+    names.push(stemFileName(clipId, "lead", head), stemFileName(clipId, "rhythm", head));
+  }
+  return names;
 }
