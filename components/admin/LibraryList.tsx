@@ -378,19 +378,17 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd, onBulkAction }
                         checked={selected.has(recording.key)}
                         onChange={(event) => toggleOne(recording.key, event.target.checked)}
                         aria-label={`${recording.lead.artist} — ${recording.lead.song}`}
-                        className="mt-1 h-4 w-4 shrink-0 accent-flame"
+                        className={`mt-1 h-4 w-4 shrink-0 cursor-pointer appearance-none border-2 bg-transparent transition-colors ${
+                          recording.verified
+                            ? "border-flame-deep checked:bg-flame-deep"
+                            : "border-flame checked:bg-flame"
+                        }`}
                       />
                       <button
                         type="button"
                         onClick={() => onSelect(recording.lead)}
                         className="flex min-w-0 flex-1 items-start gap-3 text-left"
                       >
-                        <span
-                          className={`mt-[6px] block h-2 w-2 shrink-0 ${
-                            recording.verified ? "bg-flame-deep" : "bg-flame"
-                          }`}
-                          aria-hidden="true"
-                        />
                         <span className="min-w-0">
                           <span className="type-body block truncate text-sm text-paper">
                             {recording.lead.artist}
