@@ -25,6 +25,131 @@ const FADE_SECONDS = 0.004;
  */
 const SCHEDULE_LEAD = 0.005;
 
+/* ------------------------------------------------------------------
+   One context for the whole page.
+
+   A browser only hands out a handful of AudioContexts per tab — six in
+   Chrome, fewer in Safari — and every one that is created and not closed
+   counts against that. A hook that built its own per mount ran the tab out
+   of them after enough navigating between game, editor and workbench, and
+   the symptom is silence with no error: the calls all succeed, nothing
+   sounds. Opening another browser "fixed" it because the count started over.
+
+   So the context lives at module scope, is built once, and is never leaked.
+   AudioBuffers are not bound to the context that decoded them, so it can be
+   rebuilt underneath a decoded clip without re-fetching anything.
+   ------------------------------------------------------------------ */
+
+let sharedContext: AudioContext | null = null;
+let wakeListenersAttached = false;
+
+/**
+ * iOS routes Web Audio through a session category that the ring/silent
+ * switch mutes. Declaring the page as playback moves it to the category
+ * used by media players, which the switch does not touch — the same reason
+ * a podcast keeps playing on a silenced phone. Safari 16.4+; older iOS
+ * keeps the old behaviour and still needs the switch off.
+ */
+function preferPlaybackSession(): void {
+  const session = (navigator as Navigator & { audioSession?: { type: string } })
+    .audioSession;
+  if (!session) return;
+  try {
+    session.type = "playback";
+  } catch {
+    /* not settable on this browser */
+  }
+}
+
+/**
+ * A context that was running when the tab was hidden — or when the phone
+ * locked, or a call came in — comes back "suspended" or, on Safari,
+ * "interrupted", and stays that way until something resumes it. Nothing in
+ * a snippet player naturally does, so the next click is silent.
+ */
+function attachWakeListeners(): void {
+  if (wakeListenersAttached) return;
+  wakeListenersAttached = true;
+
+  const wake = () => {
+    const ctx = sharedContext;
+    if (!ctx || ctx.state === "closed" || ctx.state === "running") return;
+    void ctx.resume().catch(() => {});
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) wake();
+  });
+  window.addEventListener("pageshow", wake);
+  window.addEventListener("focus", wake);
+}
+
+function createContext(): AudioContext {
+  preferPlaybackSession();
+  attachWakeListeners();
+  const Ctor =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext: typeof AudioContext })
+      .webkitAudioContext;
+  clockProbe = null;
+  return new Ctor();
+}
+
+function sharedAudioContext(): AudioContext {
+  if (!sharedContext || sharedContext.state === "closed") {
+    sharedContext = createContext();
+  }
+  return sharedContext;
+}
+
+/**
+ * After a long sleep a context can report "running" while its clock has
+ * stopped advancing. Everything scheduled against it lands at a time that
+ * never arrives, so playback is silent and no error is raised. Comparing
+ * the audio clock against the wall clock between two plays catches it; a
+ * merely suspended context reports its state honestly and is excluded.
+ */
+let clockProbe: { contextTime: number; wallTime: number } | null = null;
+
+function clockIsStalled(ctx: AudioContext): boolean {
+  const wallTime = performance.now();
+  const previous = clockProbe;
+  clockProbe = { contextTime: ctx.currentTime, wallTime };
+
+  if (!previous || ctx.state !== "running") return false;
+  const wallElapsed = (wallTime - previous.wallTime) / 1000;
+  if (wallElapsed < 1) return false;
+  return ctx.currentTime - previous.contextTime < wallElapsed / 10;
+}
+
+/** A context that is awake and whose clock is moving, rebuilt if need be. */
+async function readyContext(): Promise<AudioContext> {
+  let ctx = sharedAudioContext();
+
+  if (ctx.state !== "running") {
+    preferPlaybackSession();
+    try {
+      await ctx.resume();
+    } catch {
+      /* handled by the stall check below */
+    }
+  }
+
+  if (clockIsStalled(ctx)) {
+    const dead = ctx;
+    sharedContext = null;
+    void dead.close().catch(() => {});
+    ctx = sharedAudioContext();
+    try {
+      await ctx.resume();
+    } catch {
+      /* nothing further to try */
+    }
+  }
+
+  return ctx;
+}
+
 export type AudioStatus = "idle" | "loading" | "ready" | "error";
 
 export interface SoloAudio {
@@ -38,27 +163,27 @@ export interface SoloAudio {
 }
 
 export function useSoloAudio(src: string | null, volume: number): SoloAudio {
-  const contextRef = useRef<AudioContext | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
+  const gainRef = useRef<{ context: AudioContext; gain: GainNode } | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const frameRef = useRef<number | null>(null);
   const spanRef = useRef<{ startedAt: number; duration: number } | null>(null);
+  const playTokenRef = useRef(0);
 
   const [status, setStatus] = useState<AudioStatus>("idle");
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const getContext = useCallback(() => {
-    if (!contextRef.current) {
-      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new Ctor();
-      const gain = ctx.createGain();
-      gain.connect(ctx.destination);
-      contextRef.current = ctx;
-      gainRef.current = gain;
-    }
-    return contextRef.current;
+  // The gain belongs to whichever context is current; a rebuilt context
+  // needs a new one, and the old one is dropped with it.
+  const gainFor = useCallback((ctx: AudioContext) => {
+    const existing = gainRef.current;
+    if (existing && existing.context === ctx) return existing.gain;
+    existing?.gain.disconnect();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gainRef.current = { context: ctx, gain };
+    return gain;
   }, []);
 
   const stop = useCallback(() => {
@@ -76,6 +201,8 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
       sourceRef.current = null;
     }
     spanRef.current = null;
+    // A play still waiting on resume must not sound after a stop.
+    playTokenRef.current += 1;
     setIsPlaying(false);
     setProgress(0);
   }, []);
@@ -100,7 +227,7 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
         const response = await fetch(src);
         if (!response.ok) throw new Error(`${response.status}`);
         const bytes = await response.arrayBuffer();
-        const decoded = await getContext().decodeAudioData(bytes);
+        const decoded = await sharedAudioContext().decodeAudioData(bytes);
         if (cancelled) return;
         setBuffer(decoded);
         setStatus("ready");
@@ -114,7 +241,7 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
       // Moving to another solo has to silence the one still sounding.
       stop();
     };
-  }, [src, getContext, stop]);
+  }, [src, stop]);
 
   const play = useCallback(
     (offsetSeconds: number, durationSeconds: number) => {
@@ -122,11 +249,10 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
       stop();
 
       const decoded = buffer;
-      const ctx = getContext();
+      const token = playTokenRef.current;
 
-      const schedule = () => {
-        const gain = gainRef.current;
-        if (!gain) return;
+      const schedule = (ctx: AudioContext) => {
+        const gain = gainFor(ctx);
 
         const offset = Math.max(0, Math.min(offsetSeconds, decoded.duration));
         const duration = Math.max(
@@ -176,25 +302,30 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
 
       // A context built before the first gesture starts suspended, and a
       // suspended clock is frozen — scheduling against it puts the whole
-      // envelope in the past, which is heard as a late or missing start.
-      // Resume first, then schedule against a clock that is running.
-      if (ctx.state === "suspended") {
-        void ctx.resume().then(schedule);
-        return;
-      }
-      schedule();
+      // envelope in the past, which is heard as a late or missing start. So
+      // every play goes through readyContext, which resumes what is asleep
+      // and replaces what never woke up.
+      void readyContext().then((ctx) => {
+        // A stop, or a newer play, happened while we were waiting.
+        if (playTokenRef.current !== token) return;
+        schedule(ctx);
+      });
     },
-    [buffer, getContext, stop, volume],
+    [buffer, gainFor, stop, volume],
   );
 
   useEffect(() => stop, [stop]);
 
-  useEffect(() => {
-    const ctx = contextRef.current;
-    return () => {
-      if (ctx && ctx.state !== "closed") void ctx.close();
-    };
-  }, []);
+  // The context is shared and outlives this hook; only the node it owns
+  // goes. Closing the context here is what used to leak it instead: the ref
+  // was read at mount, when it was still null, so nothing was ever closed.
+  useEffect(
+    () => () => {
+      gainRef.current?.gain.disconnect();
+      gainRef.current = null;
+    },
+    [],
+  );
 
   return { status, isPlaying, progress, buffer, play, stop };
 }
