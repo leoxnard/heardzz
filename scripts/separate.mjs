@@ -441,6 +441,25 @@ const HEAD_BY_INSTRUMENT = [
  * first match wins rather than the first instrument, so the rhythm-section
  * readings are preferred — a player credited "Piano, Trumpet" who is being
  * asked about is much more likely to be at the piano.
+ *
+ * It is tempting to also check whether the band has a horn or a singer, and
+ * refuse a rhythm instrument as lead whenever one exists — Moanin' looks
+ * exactly like that failure: nobody ever named its soloist, the fallback in
+ * `resolveSoloist` landed on the bandleader, and Art Blakey's own credit
+ * says "Drums", so the record played a drum solo under "Only the soloist"
+ * despite Lee Morgan and Benny Golson being right there on the session.
+ *
+ * But Freddie Freeloader, Cantaloupe Island, Song For My Father, and Take
+ * Five are the identical shape — a horn-playing band, a soloist credited on
+ * piano — and are correct: Wynton Kelly, Herbie Hancock, Horace Silver, and
+ * Dave Brubeck really are the ones soloing on those records, horns in the
+ * band notwithstanding. Checking the credits cannot tell that apart from
+ * Moanin', because the fact that decides it — who is actually playing on
+ * the marked clip — is not in the credits. It is only in the recording.
+ *
+ * So this stays a plain lookup, and a soloist that turns out to be wrong is
+ * a library-screen fix, one record at a time, not a rule this function can
+ * be taught.
  */
 export function leadStemFor(role) {
   const text = String(role ?? "").toLowerCase();
