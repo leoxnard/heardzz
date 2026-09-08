@@ -427,7 +427,7 @@ export const STEM_HEADS = ["other", "piano", "guitar", "bass", "drums", "vocals"
  * section is not defined by subtraction. It is four instruments, and on any
  * given record it is whichever of them are in the band.
  */
-const RHYTHM_HEADS = ["piano", "guitar", "bass", "drums"];
+export const RHYTHM_HEADS = ["piano", "guitar", "bass", "drums"];
 
 /** The variants a clip is split into. Mirrors StemId in lib/types.ts. */
 export const STEM_IDS = ["lead", "rhythm", "bass"];
@@ -586,6 +586,23 @@ export function headsInCredits(personnel) {
  */
 export function stemFileName(clipId, id, leadHead) {
   return id === "bass" ? `${clipId}--bass.mp3` : `${clipId}--${id}-${leadHead}.mp3`;
+}
+
+/**
+ * What a cut's split would come out as, as one comparable string.
+ *
+ * The heads that go into a variant are the whole of what makes it the audio
+ * it is, so two cuts with the same shape produce the same files and a cut
+ * whose shape has changed is holding audio for a question nobody is asking
+ * any more. That is what the library screen compares across a save: not the
+ * fields somebody edited, but whether editing them moved this. Correcting a
+ * spelling in the credits does not, and does not cost an hour of separating.
+ */
+export function splitShapeFor({ cut, role, personnel }) {
+  const lead = leadHeadFor({ cut, role, personnel });
+  const present = headsInCredits(personnel);
+  const rhythm = RHYTHM_HEADS.filter((head) => head !== lead && present.has(head));
+  return `${lead}|${rhythm.join("+")}`;
 }
 
 /**

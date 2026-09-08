@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSoloAudio } from "@/lib/audio";
 import { STEMS } from "@/lib/config";
 import { t } from "@/lib/i18n";
@@ -23,15 +23,42 @@ import type { Solo, StemId, StemVariant } from "@/lib/types";
 
 const STEM_IDS: StemId[] = ["lead", "rhythm", "bass"];
 
-/** The rungs offered here: the opening the round starts on, then context. */
-const AUDITION_SECONDS = [0.5, 2, 20];
-
-export function StemReview({ solo, onSaved }: { solo: Solo; onSaved: (solo: Solo) => void }) {
+export function StemReview({
+  solo, onSaved, resplit = 0,
+}: {
+  solo: Solo;
+  onSaved: (solo: Solo) => void;
+  /**
+   * Bumped by the editor when a save invalidated the stems. A count rather
+   * than a flag so two saves in a row each start a split, and so this reads
+   * as an event rather than as a state that has to be cleared again.
+   */
+  resplit?: number;
+}) {
   const [cut, setCut] = useState<"head" | "solo">(solo.soloClip?.stems ? "solo" : "head");
 
   const stems = cut === "solo" ? solo.soloClip?.stems : solo.stems;
   const leadIn = cut === "solo" ? (solo.soloClip?.leadIn ?? 0) : solo.leadIn;
+  const split = useSplit(solo.id, onSaved);
 
+  /*
+   * Run whatever the last save invalidated. Not forced: the save already
+   * removed exactly the cuts whose heads changed, and the ones it left
+   * alone are still the right audio for the question they answer.
+   */
+  const started = useRef(0);
+  useEffect(() => {
+    if (resplit === 0 || started.current === resplit) return;
+    started.current = resplit;
+    void split.run(false);
+  }, [resplit, split]);
+
+  /*
+   * A record with no stems is the normal state after a save that changed
+   * which heads belong in them — the library screen throws the old audio
+   * away rather than keep serving an answer to a question that has moved.
+   * So this is where the split is offered rather than only explained.
+   */
   if (!solo.stems && !solo.soloClip?.stems) {
     return (
       <section className="mt-12 border-t border-ink-edge pt-8">
@@ -39,6 +66,7 @@ export function StemReview({ solo, onSaved }: { solo: Solo; onSaved: (solo: Solo
         <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
           {t("stemReview.notSplit")}
         </p>
+        <SplitButton split={split} label={t("stemReview.split")} />
       </section>
     );
   }
@@ -70,6 +98,8 @@ export function StemReview({ solo, onSaved }: { solo: Solo; onSaved: (solo: Solo
         </div>
       )}
 
+      <SplitButton split={split} label={t("stemReview.resplit")} force />
+
       <ul className="mt-4 space-y-3">
         {STEM_IDS.map((id) => {
           const variant = stems?.[id];
@@ -88,6 +118,82 @@ export function StemReview({ solo, onSaved }: { solo: Solo; onSaved: (solo: Solo
         })}
       </ul>
     </section>
+  );
+}
+
+/**
+ * Run the split for one record, a cut at a time.
+ *
+ * The route does one cut per request because separating is about a minute
+ * of CPU on the machine this runs on and a request that does both cuts is a
+ * timeout with nothing to show for it. So the loop lives here, where it can
+ * say which cut it is on — the alternative is a button that goes quiet for
+ * three minutes and gives no way to tell working from hung.
+ */
+function useSplit(id: string, onSaved: (solo: Solo) => void) {
+  const [running, setRunning] = useState(false);
+  const [step, setStep] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = useCallback(
+    async (force: boolean) => {
+      setRunning(true);
+      setError(null);
+      try {
+        // Bounded rather than `while (true)`: a route that kept answering
+        // "one more" would otherwise spin here for as long as the tab is
+        // open. Four is both cuts twice over.
+        for (let pass = 0; pass < 4; pass += 1) {
+          const response = await fetch("/api/admin/split", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // Only the first pass forces: after that the cuts it has already
+            // done are the work, and forcing again would redo them forever.
+            body: JSON.stringify({ id, force: force && pass === 0 }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error ?? "Could not split it");
+          if (data.solo) onSaved(data.solo as Solo);
+          setStep(data.split ?? null);
+          if (data.done) break;
+        }
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setRunning(false);
+        setStep(null);
+      }
+    },
+    [id, onSaved],
+  );
+
+  return { run, running, step, error };
+}
+
+function SplitButton({
+  split, label, force = false,
+}: {
+  split: ReturnType<typeof useSplit>;
+  label: string;
+  force?: boolean;
+}) {
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        disabled={split.running}
+        onClick={() => split.run(force)}
+        className="type-eyebrow border border-ink-edge px-4 py-2 text-xs text-paper-dim transition-colors hover:border-flame hover:text-paper disabled:opacity-40"
+      >
+        {split.running ? t("stemReview.splitting") : label}
+      </button>
+      {split.running && (
+        <p className="type-body mt-2 text-xs text-paper-faint">
+          {split.step ? `${split.step} — ${t("stemReview.splittingSlow")}` : t("stemReview.splittingSlow")}
+        </p>
+      )}
+      {split.error && <p className="type-body mt-2 text-xs text-flame">{split.error}</p>}
+    </div>
   );
 }
 
@@ -158,26 +264,20 @@ function StemRow({
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {AUDITION_SECONDS.map((seconds) => (
-          <button
-            key={seconds}
-            type="button"
-            disabled={audio.status !== "ready"}
-            onClick={() => audio.play(leadIn, seconds)}
-            className="type-data border border-ink-edge px-3 py-2 text-xs text-paper-dim hover:border-flame hover:text-paper disabled:opacity-40"
-          >
-            {seconds} s
-          </button>
-        ))}
-        {audio.isPlaying && (
-          <button
-            type="button"
-            onClick={audio.stop}
-            className="type-data border border-ink-edge px-3 py-2 text-xs text-paper-dim hover:text-paper"
-          >
-            {t("stemReview.stop")}
-          </button>
-        )}
+        {/* One button, and it plays the whole thing. Judging a stem is not
+            the game's ladder — it is listening to what is in there. */}
+        <button
+          type="button"
+          disabled={audio.status !== "ready"}
+          onClick={() =>
+            audio.isPlaying
+              ? audio.stop()
+              : audio.play(leadIn, (audio.buffer?.duration ?? leadIn) - leadIn)
+          }
+          className="type-eyebrow border border-ink-edge px-4 py-2 text-xs text-paper-dim hover:border-flame hover:text-paper disabled:opacity-40"
+        >
+          {audio.isPlaying ? t("stemReview.stop") : t("stemReview.play")}
+        </button>
 
         <span className="flex-1" />
 

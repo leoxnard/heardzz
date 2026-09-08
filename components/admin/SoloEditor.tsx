@@ -17,8 +17,7 @@ import type { Solo } from "@/lib/types";
    ------------------------------------------------------------------ */
 
 /** What space plays, here and on the marking screen. */
-const PREVIEW = 6;
-const PREVIEW_LENGTHS = [0.5, 2, PREVIEW];
+
 
 /** Below this the marker is sitting in silence, not in a solo. */
 const SILENT_RMS = 0.004;
@@ -63,6 +62,8 @@ export function SoloEditor({
 }: SoloEditorProps) {
   const [draft, setDraft] = useState<Solo>(solo);
   const [busy, setBusy] = useState(false);
+  /** Bumped when a save invalidates the stems, to set the split going. */
+  const [resplit, setResplit] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [discogsLink, setDiscogsLink] = useState("");
   const [creditsBusy, setCreditsBusy] = useState(false);
@@ -88,16 +89,23 @@ export function SoloEditor({
     return playedFrom + audio.progress * playedLength;
   }, [audio.isPlaying, audio.progress, playedFrom, playedLength]);
 
-  const preview = useCallback(
-    (seconds: number) => {
-      setPlayedFrom(marker);
-      setPlayedLength(seconds);
-      audio.play(marker, seconds);
-    },
-    [audio, marker],
-  );
+  /**
+   * Play whichever cut is on screen, from the marker to the end of it.
+   *
+   * There used to be a row of buttons offering half a second, two, and six.
+   * They were the game's ladder leaking into the editor, and the editor is
+   * not the game: marking an entry point means hearing what comes after it,
+   * and cutting that off at six seconds only meant pressing the button
+   * again. The clip is twenty-odd seconds. It plays.
+   */
+  const preview = useCallback(() => {
+    const rest = (audio.buffer?.duration ?? marker) - marker;
+    setPlayedFrom(marker);
+    setPlayedLength(rest);
+    audio.play(marker, rest);
+  }, [audio, marker]);
 
-  /* Space plays six seconds of whichever cut is on screen. */
+  /* Space plays whichever cut is on screen, and stops it again. */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -105,7 +113,7 @@ export function SoloEditor({
       if (event.code !== "Space" && event.key !== " ") return;
       event.preventDefault();
       if (audio.isPlaying) audio.stop();
-      else preview(PREVIEW);
+      else preview();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -141,6 +149,20 @@ export function SoloEditor({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Save failed");
+
+      /*
+       * The save may have thrown the stems away, because what went into them
+       * changed — a different soloist takes a different instrument out of
+       * the rhythm mix. Noticing it here rather than in `StemReview` is the
+       * difference between "these were just invalidated" and "these are
+       * missing", and only the first should start an hour of separating.
+       * Merely opening a record that was never split must not.
+       */
+      const dropped =
+        (Boolean(draft.stems) && !data.stems) ||
+        (Boolean(draft.soloClip?.stems) && !data.soloClip?.stems);
+      if (dropped) setResplit((n) => n + 1);
+
       setDraft(data);
       onSaved(data);
     } catch (cause) {
@@ -215,13 +237,22 @@ export function SoloEditor({
           </p>
         </div>
 
-        <span
-          className={`type-eyebrow px-3 py-1 ${
-            draft.verified ? "bg-flame text-ink" : "border border-paper-faint text-paper-dim"
+        {/* A chip that was only ever a readout, and the one thing the second
+            save button existed to set. Clicking it is the setting now, and
+            the save below writes it with everything else. */}
+        <button
+          type="button"
+          onClick={() => field("verified", !draft.verified)}
+          aria-pressed={Boolean(draft.verified)}
+          title={t("library.verifiedHint")}
+          className={`type-eyebrow px-3 py-1 transition-colors ${
+            draft.verified
+              ? "bg-flame text-ink hover:bg-paper"
+              : "border border-paper-faint text-paper-dim hover:border-flame hover:text-flame"
           }`}
         >
           {draft.verified ? t("library.verified") : "unverified"}
-        </span>
+        </button>
       </div>
 
       {/* Every entry cut from this recording, so a record with three soloists
@@ -302,50 +333,25 @@ export function SoloEditor({
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <span className="type-eyebrow text-paper-faint">{t("library.preview")}</span>
-        {PREVIEW_LENGTHS.map((seconds) => (
-          <button
-            key={seconds}
-            type="button"
-            onClick={() => preview(seconds)}
-            disabled={audio.status !== "ready"}
-            className={`type-data border px-4 py-2 text-sm transition-colors disabled:opacity-30 ${
-              seconds === (playedLength || PREVIEW)
-                ? "border-flame text-flame"
-                : "border-ink-edge text-paper hover:border-flame hover:text-flame"
-            }`}
-          >
-            {seconds}s
-          </button>
-        ))}
-        {audio.isPlaying && (
-          <button
-            type="button"
-            onClick={audio.stop}
-            className="type-eyebrow px-3 py-2 text-flame"
-          >
-            {t("library.stop")}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => (audio.isPlaying ? audio.stop() : preview())}
+          disabled={audio.status !== "ready"}
+          className="type-eyebrow border border-ink-edge px-5 py-2 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-30"
+        >
+          {audio.isPlaying ? t("library.stop") : t("library.preview")}
+        </button>
         <span className="type-body ml-auto text-xs text-paper-faint">{t("library.spaceHint")}</span>
       </div>
 
       <div className="mt-8 flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => save({ verified: true })}
+          onClick={() => save()}
           disabled={busy}
           className="type-eyebrow bg-flame px-5 py-3 text-ink transition-colors hover:bg-paper disabled:opacity-40"
         >
-          {busy ? t("library.saving") : t("library.markVerified")}
-        </button>
-        <button
-          type="button"
-          onClick={() => save()}
-          disabled={busy}
-          className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
-        >
-          {t("library.save")}
+          {busy ? t("library.saving") : t("library.save")}
         </button>
         <button
           type="button"
@@ -358,7 +364,7 @@ export function SoloEditor({
 
       {error && <p className="type-body mt-4 text-sm text-flame">{error}</p>}
 
-      <StemReview solo={solo} onSaved={onSaved} />
+      <StemReview solo={solo} onSaved={onSaved} resplit={resplit} />
 
       <section className="mt-12 border-t border-ink-edge pt-8">
         <h3 className="type-eyebrow text-flame">{t("library.soloist")}</h3>

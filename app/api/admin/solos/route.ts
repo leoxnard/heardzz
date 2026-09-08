@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { readLibrary, writeLibrary } from "@/scripts/extract.mjs";
-import { stemFilesFor } from "@/scripts/separate.mjs";
+import { splitShapeFor, stemFilesFor } from "@/scripts/separate.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
 import { AUDIO_DIR } from "@/lib/paths";
 import { resolveSoloist } from "@/lib/soloist";
@@ -75,6 +75,27 @@ export async function PATCH(request: Request) {
     // stored spelling always matches the one in the credits.
     ...resolveSoloist(merged.soloist, merged.artist, merged.personnel),
   };
+
+  /*
+   * And the same argument one step further out. The entry point decides what
+   * window the stems were judged over; the soloist and the credits decide
+   * which heads went into them at all — naming the pianist as the soloist
+   * takes the piano out of the rhythm mix, and correcting an instrument in
+   * the personnel changes what a rhythm section even consists of on this
+   * record.
+   *
+   * Compared as the shape the split would come out as, rather than as the
+   * fields somebody touched, so fixing a spelling costs nothing and only a
+   * change that would genuinely produce different audio throws the audio
+   * away. The screen re-splits what this drops.
+   */
+  for (const cut of ["head", "solo"] as const) {
+    const before = splitShapeFor({ cut, role: current.soloistRole, personnel: current.personnel });
+    const after = splitShapeFor({ cut, role: updated.soloistRole, personnel: updated.personnel });
+    if (before === after) continue;
+    if (cut === "head") delete updated.stems;
+    else if (updated.soloClip) updated.soloClip = { ...updated.soloClip, stems: undefined };
+  }
 
   solos[index] = updated;
   await writeLibrary({ ...library, solos });

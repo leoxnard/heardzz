@@ -158,7 +158,7 @@ export const en = {
   stemReview: {
     title: "Pulled apart",
     help:
-      "The meters only catch silence. Whether the soloist stem is the soloist, and whether the rhythm mix really lost the horn, is something only listening settles — so nothing here is dealt until it has a yes. Play the half second first: that is the rung the round opens on.",
+      "The meters only catch silence. Whether the soloist stem is the soloist, and whether the rhythm mix really lost the horn, is something only listening settles — so nothing here is dealt until it has a yes. Split it again after changing the soloist or the credits; a save that moves what goes into a stem starts that on its own.",
     notSplit: "This record has not been split yet. Run split-stems.",
     headCut: "From the top",
     soloCut: "From the solo",
@@ -169,7 +169,13 @@ export const en = {
     unruled: "Not ruled on",
     approve: "Deal it",
     reject: "Never deal it",
+    play: "Play it",
     stop: "Stop",
+    split: "Pull it apart",
+    resplit: "Split it again",
+    splitting: "Separating",
+    splittingSlow:
+      "A minute or so per cut. It writes as it goes, so leaving the page keeps what it has done.",
     audioFailed: "That file would not load.",
   },
 
@@ -216,12 +222,13 @@ export const en = {
     soloAt: "Round starts at",
     headClip: "The opening cut",
     soloClip: "The solo cut",
-    spaceHint: "Space plays six seconds.",
+    spaceHint: "Space plays and stops it.",
     inClip: "In this clip",
     inSource: "In the source recording",
-    preview: "Preview from here",
+    preview: "Play from the marker",
     stop: "Stop",
-    markVerified: "Confirm timestamp",
+    verifiedHint:
+      "Whether the start point has been confirmed by ear. Players can set the game to deal only these.",
     verified: "Confirmed",
     cutSoloClip: "Cut the solo clip",
     soloClipCut: "The hard levels open at {time}.",
