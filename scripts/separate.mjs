@@ -418,6 +418,17 @@ async function encodeStem(inputs, output, { lift = 0 } = {}) {
 
 export const STEM_HEADS = ["other", "piano", "guitar", "bass", "drums", "vocals"];
 
+/**
+ * The rhythm section, and nothing else.
+ *
+ * `rhythm` used to be "every head except the lead", which let a horn into it
+ * whenever the lead was something other than the horns — Giant Steps played
+ * a tenor saxophone in "Only the rhythm section" that way. But a rhythm
+ * section is not defined by subtraction. It is four instruments, and on any
+ * given record it is whichever of them are in the band.
+ */
+const RHYTHM_HEADS = ["piano", "guitar", "bass", "drums"];
+
 /** The variants a clip is split into. Mirrors StemId in lib/types.ts. */
 export const STEM_IDS = ["lead", "rhythm", "bass"];
 
@@ -467,6 +478,53 @@ export function leadStemFor(role) {
     if (pattern.test(text)) return head;
   }
   return "other";
+}
+
+/**
+ * The head carrying the melody, for a cut where nobody is soloing yet.
+ *
+ * The top of a tune is the head: the theme, stated by the band before
+ * anybody takes it anywhere. Asking who is soloing there is asking the
+ * wrong question — nobody is — and answering it with the credited soloist's
+ * instrument is what put Art Blakey's drums out front on Moanin' and took
+ * his drums out of the rhythm section at the same time, on a record whose
+ * theme is Lee Morgan and Benny Golson playing in harmony.
+ *
+ * So this asks the question that cut actually poses: who has the melody.
+ * A singer if the record has one, the horns if it has those, and otherwise
+ * the soloist's own instrument — which is the trio case, where the piano or
+ * the guitar states the theme because there is nothing else to state it.
+ */
+export function melodyStemFor(personnel, role) {
+  let sawHorn = false;
+  for (const credit of personnel ?? []) {
+    const text = String(credit?.role ?? "").toLowerCase();
+    if (!text) continue;
+    let head = "other";
+    for (const [pattern, mapped] of HEAD_BY_INSTRUMENT) {
+      if (pattern.test(text)) {
+        head = mapped;
+        break;
+      }
+    }
+    // A singer outranks a horn: on a vocal record the horns are the setting.
+    if (head === "vocals") return "vocals";
+    if (head === "other") sawHorn = true;
+  }
+  return sawHorn ? "other" : leadStemFor(role);
+}
+
+/**
+ * The head out front, for the cut in hand.
+ *
+ * The two cuts are different moments and want different answers, which is
+ * the thing this file used to get wrong by answering both from
+ * `soloistRole`. On the solo cut somebody is soloing and the library says
+ * who, so their instrument is the lead. On the head cut nobody is, so the
+ * melody is.
+ */
+export function leadHeadFor({ cut, role, personnel }) {
+  return cut === "solo" ? leadStemFor(role) : melodyStemFor(personnel, role);
 }
 
 /**
@@ -547,7 +605,7 @@ export function stemFileName(clipId, id, leadHead) {
  * and therefore what the rhythm mix has left in it.
  */
 export async function separateClip({
-  clipId, leadIn, role, personnel, previous, onProgress,
+  clipId, leadIn, cut, role, personnel, previous, onProgress,
 }) {
   const log = onProgress ?? (() => {});
   const mixFile = path.join(AUDIO_DIR, `${clipId}.mp3`);
@@ -569,7 +627,7 @@ export async function separateClip({
     if (files.length === 0) throw new Error("the separator produced nothing");
 
     const stem = (name) => path.join(produced, `${name}.wav`);
-    const leadHead = leadStemFor(role);
+    const leadHead = leadHeadFor({ cut, role, personnel });
     const present = headsInCredits(personnel);
     const results = {};
 
@@ -626,14 +684,16 @@ export async function separateClip({
 
     await write("lead", [leadHead]);
     /*
-     * Everything but the lead voice — and nothing the band does not have.
-     * The lead head itself is kept in `present` regardless: the soloist is
-     * on the record by definition, whatever the credits managed to say about
-     * their instrument.
+     * The rhythm section the band actually has, less whoever is out front.
+     * The subtraction only ever removes a rhythm instrument — a piano when
+     * the pianist is soloing — because the horns were never in here to
+     * remove, and a head the band does not contain is bleed rather than a
+     * part. So on a horn record this is the whole rhythm section, every
+     * time, whatever the soloist happens to play.
      */
     await write(
       "rhythm",
-      STEM_HEADS.filter((head) => head !== leadHead && present.has(head)),
+      RHYTHM_HEADS.filter((head) => head !== leadHead && present.has(head)),
       { lift: false },
     );
     /*

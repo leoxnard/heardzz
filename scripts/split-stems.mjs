@@ -18,7 +18,7 @@
 
 import { readLibrary, writeLibrary } from "./extract.mjs";
 import {
-  ensureSeparator, headsInCredits, leadStemFor, separateClip, separatorIsReady,
+  ensureSeparator, headsInCredits, leadHeadFor, separateClip, separatorIsReady,
 } from "./separate.mjs";
 
 const args = process.argv.slice(2);
@@ -42,6 +42,7 @@ for (const solo of library.solos) {
     label: `${solo.artist} — ${solo.song}`,
     clipId: solo.audio ? basename(solo.audio) : null,
     leadIn: solo.leadIn,
+    cut: "head",
     role: solo.soloistRole,
     personnel: solo.personnel,
     previous: solo.stems,
@@ -55,6 +56,7 @@ for (const solo of library.solos) {
       label: `${solo.artist} — ${solo.song} (solo)`,
       clipId: basename(solo.soloClip.audio),
       leadIn: solo.soloClip.leadIn,
+      cut: "solo",
       role: solo.soloistRole,
       personnel: solo.personnel,
       previous: solo.soloClip.stems,
@@ -80,7 +82,8 @@ function basename(audio) {
  */
 function jobKey(cut) {
   const heads = [...headsInCredits(cut.personnel)].sort().join("+");
-  return `${cut.clipId}:${leadStemFor(cut.role)}:${heads}`;
+  const lead = leadHeadFor({ cut: cut.cut, role: cut.role, personnel: cut.personnel });
+  return `${cut.clipId}:${lead}:${heads}`;
 }
 
 const targets = cuts.filter((cut) => force || !cut.has());
@@ -140,6 +143,7 @@ for (const [index, cut] of targets.entries()) {
     const stems = await separateClip({
       clipId: cut.clipId,
       leadIn: cut.leadIn,
+      cut: cut.cut,
       role: cut.role,
       personnel: cut.personnel,
       previous: cut.previous,
