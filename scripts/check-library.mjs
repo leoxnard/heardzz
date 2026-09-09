@@ -12,7 +12,7 @@
    ------------------------------------------------------------------ */
 
 import { readLibrary } from "./extract.mjs";
-import { RHYTHM_HEADS, headsInCredits, leadHeadsFor, rhythmHeadsFor } from "./separate.mjs";
+import { RHYTHM_HEADS, leadHeadsFor, rhythmHeadsFor } from "./separate.mjs";
 
 const library = await readLibrary();
 
