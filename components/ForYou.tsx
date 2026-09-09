@@ -34,6 +34,70 @@ const REPLAN_AT = 4;
  */
 const SESSION_STORAGE_KEY = "heardzz:foryou:v1";
 
+/**
+ * The doors somebody has actually been through, most recent first, kept
+ * apart from the sitting above because it outlives it: a sitting is over
+ * when you leave it, and the link you pasted to build it is worth having
+ * tomorrow. Nothing here leaves the browser.
+ */
+const HISTORY_STORAGE_KEY = "heardzz:foryou:history:v1";
+
+/** Long enough to find last week's playlist, short enough to read at a glance. */
+const HISTORY_KEPT = 6;
+
+interface Past {
+  /** Which door it was typed into: the key `READINGS` is indexed by. */
+  door: string;
+  /** Exactly what was typed — a link, a username, a few words. */
+  value: string;
+  /** Which reading of it was played. */
+  mode: string;
+  /** What the round turned out to be, in TIDAL's or Last.fm's own words. */
+  source: string;
+  at: number;
+}
+
+/**
+ * The two readings each door offers, named so the name is the whole
+ * explanation.
+ *
+ * Held here rather than inside the three `Door` calls because the history
+ * below needs them too — a row saying only "hard bop" cannot say which of
+ * the two ways through it was played, and a second copy of these labels
+ * would be a second thing to keep in step.
+ */
+const READINGS: Record<string, { key: string; label: string }[]> = {
+  lastfm: [
+    { key: "known", label: "Records I know" },
+    { key: "nearby", label: "Records like mine" },
+  ],
+  tidal: [
+    { key: "inside", label: "Records from it" },
+    { key: "wider", label: "Records like it" },
+  ],
+  words: [
+    { key: "exact", label: "Exactly that" },
+    { key: "wider", label: "Records like it" },
+  ],
+};
+
+/** What to call each door in a history row, where its mark is not there to say. */
+const DOOR_NAMES: Record<string, string> = {
+  lastfm: "Last.fm",
+  tidal: "TIDAL",
+  words: "Typed",
+};
+
+/** "yesterday", "3 days ago" — near enough, and shorter than a date. */
+function ago(at: number): string {
+  const days = Math.floor((Date.now() - at) / 86_400_000);
+  if (days < 1) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.round(days / 30);
+  return months === 1 ? "a month ago" : `${months} months ago`;
+}
+
 interface StoredSession {
   target: string;
   source: string;
@@ -71,6 +135,17 @@ export function ForYou() {
    * it is done.
    */
   const [activeDoor, setActiveDoor] = useState<string | null>(null);
+  /** Doors gone through before, read from storage at mount. */
+  const [history, setHistory] = useState<Past[]>([]);
+  /**
+   * The reading marked in each door, or null where none is yet.
+   *
+   * Held here rather than inside the doors because a history row sets one
+   * from outside: pressing "Moonchild — records from it" fills that door's
+   * field and must mark that door's box too, or the round would be running
+   * against a panel that says nothing was chosen.
+   */
+  const [picks, setPicks] = useState<Record<string, string | null>>({});
   const [solos, setSolos] = useState<Solo[]>([]);
   const [source, setSource] = useState("");
   const [reached, setReached] = useState<string[]>([]);
@@ -153,9 +228,60 @@ export function ForYou() {
     }
   }, []);
 
+  /**
+   * Write down a door that worked, so tomorrow it is one press away.
+   *
+   * Only on the way out of a successful read: a link that was refused, or a
+   * username with a typo in it, is not a place anybody wants taken back to.
+   * The same words typed twice move to the top rather than appearing twice.
+   */
+  const remember = useCallback((seen: Omit<Past, "at">) => {
+    const entry: Past = { ...seen, at: Date.now() };
+    setHistory((past) => {
+      const key = `${entry.door}|${entry.mode}|${entry.value.toLowerCase()}`;
+      const next = [
+        entry,
+        ...past.filter(
+          (old) => `${old.door}|${old.mode}|${old.value.toLowerCase()}` !== key,
+        ),
+      ].slice(0, HISTORY_KEPT);
+
+      try {
+        window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Then it lasts as long as the tab does, which is still better than nothing.
+      }
+      return next;
+    });
+  }, []);
+
+  /** Clear it out. Somebody else's turn at the keyboard, usually. */
+  function forget() {
+    setHistory([]);
+    try {
+      window.localStorage.removeItem(HISTORY_STORAGE_KEY);
+    } catch {
+      // Already gone from the screen, which is what was asked for.
+    }
+  }
+
   /** Pick up a sitting left mid-play, rather than starting the listener over. */
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (stored) {
+        const past = JSON.parse(stored) as Past[];
+        // Anything that does not name a door this build still has is from an
+        // older shape of this list, and is dropped rather than rendered blank.
+        if (Array.isArray(past)) {
+          setHistory(past.filter((entry) => entry?.value && READINGS[entry.door]));
+        }
+      }
+    } catch {
+      // A history that cannot be read is no worse than no history.
+    }
+
     try {
       const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
       if (!raw) return;
@@ -287,10 +413,12 @@ export function ForYou() {
   async function beginSession(
     request: () => Promise<Response>,
     resolvedTarget: string,
-    door: string,
+    /** Which door, and what was typed into it — the makings of a history row. */
+    through: { door: string; value: string; mode: string },
   ) {
     if (running.current) return;
     running.current = true;
+    const { door } = through;
     const mine = (sitting.current += 1);
     setActiveDoor(door);
     setPhase("planning");
@@ -318,6 +446,8 @@ export function ForYou() {
       setSource(data.source ?? "");
       reachedRef.current = data.reached ?? [];
       setReached(data.reached ?? []);
+      // Only now: a door is worth writing down once it has answered.
+      remember({ ...through, source: data.source ?? "" });
       setReady(0);
       setPlayed(0);
       setPhase("fetching");
@@ -355,8 +485,8 @@ export function ForYou() {
    * handing over a playlist as a description of their taste rather than as
    * a set of questions.
    */
-  function start(mode: "inside" | "wider") {
-    const trimmed = target.trim();
+  function start(mode: "inside" | "wider", raw = target) {
+    const trimmed = raw.trim();
     void beginSession(
       () =>
         fetch("/api/foryou/plan", {
@@ -365,7 +495,7 @@ export function ForYou() {
           body: JSON.stringify({ target: trimmed, mode }),
         }),
       trimmed,
-      "tidal",
+      { door: "tidal", value: trimmed, mode },
     );
   }
 
@@ -379,8 +509,8 @@ export function ForYou() {
    * either. "wider" hands them to one, which names artists out of whatever
    * was said and widens from those.
    */
-  function startFromWords(mode: "exact" | "wider") {
-    const trimmed = words.trim();
+  function startFromWords(mode: "exact" | "wider", raw = words) {
+    const trimmed = raw.trim();
     void beginSession(
       () =>
         fetch("/api/foryou/from-text", {
@@ -389,7 +519,7 @@ export function ForYou() {
           body: JSON.stringify({ text: trimmed, ...(mode === "exact" ? { mode } : {}) }),
         }),
       "",
-      "words",
+      { door: "words", value: trimmed, mode },
     );
   }
 
@@ -406,8 +536,8 @@ export function ForYou() {
    * `target` — and the easy one brings its whole supply at once, which is
    * what `replan: false` in that response settles.
    */
-  function startFromLastfm(mode: "known" | "nearby") {
-    const trimmed = listener.trim();
+  function startFromLastfm(mode: "known" | "nearby", raw = listener) {
+    const trimmed = raw.trim();
     void beginSession(
       () =>
         fetch("/api/foryou/lastfm", {
@@ -416,8 +546,32 @@ export function ForYou() {
           body: JSON.stringify({ user: trimmed, mode }),
         }),
       "",
-      "lastfm",
+      { door: "lastfm", value: trimmed, mode },
     );
+  }
+
+  /**
+   * Go back through a door that worked before.
+   *
+   * The field is filled in as well as played, so the row that was pressed
+   * is visibly where the round came from — and so the other reading of the
+   * same words is one press away rather than a retype. The value is passed
+   * to the start alongside, because setting state does not make it readable
+   * on this pass.
+   */
+  function replay(entry: Past) {
+    if (busy) return;
+    setPicks((marked) => ({ ...marked, [entry.door]: entry.mode }));
+    if (entry.door === "lastfm") {
+      setListener(entry.value);
+      startFromLastfm(entry.mode as "known" | "nearby", entry.value);
+    } else if (entry.door === "tidal") {
+      setTarget(entry.value);
+      start(entry.mode as "inside" | "wider", entry.value);
+    } else {
+      setWords(entry.value);
+      startFromWords(entry.mode as "exact" | "wider", entry.value);
+    }
   }
 
   /**
@@ -449,6 +603,7 @@ export function ForYou() {
     setTarget("");
     setWords("");
     setListener("");
+    setPicks({});
     setSource("");
     setReached([]);
     setSolos([]);
@@ -597,10 +752,9 @@ export function ForYou() {
           value={listener}
           onChange={setListener}
           lowercase
-          choices={[
-            { key: "known", label: "Records I know" },
-            { key: "nearby", label: "Records like mine" },
-          ]}
+          choices={READINGS.lastfm}
+          picked={picks.lastfm ?? null}
+          onPick={(key) => setPicks((marked) => ({ ...marked, lastfm: key }))}
           onStart={(key) => startFromLastfm(key as "known" | "nearby")}
           busy={busy}
           status={activeDoor === "lastfm" ? status : null}
@@ -623,10 +777,9 @@ export function ForYou() {
           placeholder="tidal.com/playlist/… or /artist/…"
           value={target}
           onChange={setTarget}
-          choices={[
-            { key: "inside", label: "Records from it" },
-            { key: "wider", label: "Records like it" },
-          ]}
+          choices={READINGS.tidal}
+          picked={picks.tidal ?? null}
+          onPick={(key) => setPicks((marked) => ({ ...marked, tidal: key }))}
           onStart={(key) => start(key as "inside" | "wider")}
           busy={busy}
           status={activeDoor === "tidal" ? status : null}
@@ -653,10 +806,9 @@ export function ForYou() {
           placeholder="Michael Brecker, or hard bop"
           value={words}
           onChange={setWords}
-          choices={[
-            { key: "exact", label: "Exactly that" },
-            { key: "wider", label: "Records like it" },
-          ]}
+          choices={READINGS.words}
+          picked={picks.words ?? null}
+          onPick={(key) => setPicks((marked) => ({ ...marked, words: key }))}
           onStart={(key) => startFromWords(key as "exact" | "wider")}
           busy={busy}
           status={activeDoor === "words" ? status : null}
@@ -668,6 +820,68 @@ export function ForYou() {
         <p className="type-body mt-6 text-xs leading-relaxed text-paper-faint">
           Reaching for {reached.join(", ")}.
         </p>
+      )}
+
+      {/*
+        What has been through here before.
+
+        A playlist link is not something anybody has memorised, and having
+        pasted one once is no help a week later — the round it built is over
+        and the link went with it. So the doors that worked are kept, and
+        each is one press from being played again, at the reading it was
+        played at.
+      */}
+      {history.length > 0 && (
+        <div className="mt-16 border-t border-ink-edge pt-6">
+          <div className="flex items-baseline justify-between gap-4">
+            <p className="type-eyebrow text-paper-faint">Been here before</p>
+            <button
+              type="button"
+              onClick={forget}
+              className="type-eyebrow text-xs text-paper-faint transition-colors hover:text-flame"
+            >
+              Forget these
+            </button>
+          </div>
+
+          <ul className="mt-4 flex flex-col">
+            {history.map((entry) => {
+              const reading =
+                READINGS[entry.door]?.find((choice) => choice.key === entry.mode)?.label
+                ?? entry.mode;
+
+              return (
+                <li key={`${entry.door}|${entry.mode}|${entry.value}`}>
+                  <button
+                    type="button"
+                    onClick={() => replay(entry)}
+                    disabled={busy}
+                    className="group/past flex w-full items-baseline gap-4 border-b border-ink-edge py-3 text-left transition-colors hover:border-flame disabled:opacity-40"
+                  >
+                    <span className="type-data w-16 shrink-0 text-[0.65rem] text-paper-faint">
+                      {DOOR_NAMES[entry.door]}
+                    </span>
+                    {/*
+                      What the round turned out to be, where the round knows
+                      — "Dexter Gordon" rather than a thirty-character id.
+                      The link itself when it does not, which is every
+                      reading that never named its source.
+                    */}
+                    <span className="type-body min-w-0 flex-1 truncate text-sm text-paper transition-colors group-hover/past:text-flame">
+                      {entry.source || entry.value}
+                    </span>
+                    <span className="type-eyebrow shrink-0 text-[0.65rem] text-paper-faint">
+                      {reading}
+                    </span>
+                    <span className="type-body hidden shrink-0 text-xs text-paper-faint sm:block">
+                      {ago(entry.at)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
       </div>
     </div>
@@ -744,6 +958,8 @@ function Door({
   value,
   onChange,
   choices,
+  picked,
+  onPick,
   onStart,
   busy,
   status,
@@ -766,6 +982,18 @@ function Door({
    * needs a gloss is the wrong name.
    */
   choices: { key: string; label: string }[];
+  /*
+   * Picking is not starting.
+   *
+   * Every box used to fire its round on the first click, which made the
+   * three of them three buttons that looked like options — no way to see
+   * what you had chosen, no way to change your mind, and a download started
+   * by a click meant as a read. So a click marks the box instead, and the
+   * button below commits it. Which one is marked is the parent's to hold,
+   * since the history list marks one from outside.
+   */
+  picked: string | null;
+  onPick: (key: string) => void;
   onStart: (key: string) => void;
   /** Some door is working: no other one may be started over it. */
   busy: boolean;
@@ -775,16 +1003,6 @@ function Door({
   error: string | null;
   lowercase?: boolean;
 }) {
-  /*
-   * Picking is not starting.
-   *
-   * Every box used to fire its round on the first click, which made the
-   * three of them three buttons that looked like options — no way to see
-   * what you had chosen, no way to change your mind, and a download
-   * started by a click meant as a read. So a click marks the box instead,
-   * and one button below commits it.
-   */
-  const [picked, setPicked] = useState<string | null>(null);
   const filled = value.trim().length > 0;
   const ready = filled && picked !== null && !busy;
 
@@ -840,7 +1058,7 @@ function Door({
               key={choice.key}
               type="button"
               aria-pressed={chosen}
-              onClick={() => setPicked(choice.key)}
+              onClick={() => onPick(choice.key)}
               disabled={busy}
               className={`type-eyebrow w-full border px-4 py-2.5 text-left text-xs transition-colors duration-150 disabled:opacity-40 ${
                 chosen
