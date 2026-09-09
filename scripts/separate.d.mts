@@ -2,7 +2,7 @@
  *  extraction pipeline does: the CLI runs it directly and the routes import
  *  the same code. */
 
-import type { Credit, StemSet } from "@/lib/types";
+import type { Credit, StemSet, StemSource } from "@/lib/types";
 
 export const MODEL: string;
 export const STEM_HEADS: string[];
@@ -107,7 +107,7 @@ export function separateClip(args: {
   /** The stems this cut already had, so an approval can survive a re-split. */
   previous?: StemSet;
   onProgress?: (step: string) => void;
-}): Promise<StemSet>;
+}): Promise<{ stems: StemSet; sources: StemSource[] }>;
 
 /** What one variant of a clip is called on disk. */
 export function stemFileName(clipId: string, id: string, leadHeads: string | string[]): string;

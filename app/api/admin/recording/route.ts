@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { unlink } from "node:fs/promises";
+import path from "node:path";
 import { mutateLibrary } from "@/scripts/extract.mjs";
+import { AUDIO_DIR } from "@/lib/paths";
 import { splitShapeFor } from "@/scripts/separate.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
 import { resolveSoloist } from "@/lib/soloist";
@@ -53,6 +56,8 @@ export async function PATCH(request: Request) {
   if (entries.length === 0) {
     return NextResponse.json({ error: "entries are required" }, { status: 400 });
   }
+
+  const dropped: string[] = [];
 
   const written = await mutateLibrary((library) => {
   const solos = library.solos;
@@ -143,6 +148,14 @@ export async function PATCH(request: Request) {
       updated.soloClip = { ...updated.soloClip, stems: undefined };
     }
 
+    for (const source of [...(updated.sources ?? []), ...(updated.soloClip?.sources ?? [])]) {
+      dropped.push(source.audio);
+    }
+    delete updated.sources;
+    if (updated.soloClip?.sources) {
+      updated.soloClip = { ...updated.soloClip, sources: undefined };
+    }
+
     solos[index] = updated;
     out.push(updated);
   }
@@ -154,5 +167,16 @@ export async function PATCH(request: Request) {
   if (written === false) {
     return NextResponse.json({ error: "no such records" }, { status: 404 });
   }
+
+  /*
+   * The separator's own heads go here. They are a listening aid — six files
+   * per cut, kept so somebody can find where a missing bass ended up — and
+   * saving is the point at which that work is over. Splitting again brings
+   * them back.
+   */
+  for (const audio of dropped) {
+    await unlink(path.join(AUDIO_DIR, path.basename(audio))).catch(() => {});
+  }
+
   return NextResponse.json({ written });
 }

@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Waveform } from "./Waveform";
-import { useSoloAudio } from "@/lib/audio";
+import { aim, useSoloAudio } from "@/lib/audio";
 import { STEMS } from "@/lib/config";
 import { t } from "@/lib/i18n";
-import type { Solo, StemId, StemVariant } from "@/lib/types";
+import type { Solo, StemId, StemSource, StemVariant } from "@/lib/types";
 
 /* ------------------------------------------------------------------
    Listening to the pieces a record was pulled into.
@@ -25,10 +25,12 @@ import type { Solo, StemId, StemVariant } from "@/lib/types";
 const STEM_IDS: StemId[] = ["lead", "rhythm", "bass"];
 
 export function StemReview({
-  solo, onSaved, resplit = 0,
+  solo, cut, onSaved, resplit = 0,
 }: {
   solo: Solo;
-  onSaved: (solo: Solo) => void;
+  /** Which of the record's two cuts this block is reviewing. */
+  cut: "head" | "solo";
+  onSaved: (written: Solo[]) => void;
   /**
    * Bumped by the editor when a save invalidated the stems. A count rather
    * than a flag so two saves in a row each start a split, and so this reads
@@ -36,9 +38,8 @@ export function StemReview({
    */
   resplit?: number;
 }) {
-  const [cut, setCut] = useState<"head" | "solo">(solo.soloClip?.stems ? "solo" : "head");
-
   const stems = cut === "solo" ? solo.soloClip?.stems : solo.stems;
+  const sources = cut === "solo" ? solo.soloClip?.sources : solo.sources;
   const leadIn = cut === "solo" ? (solo.soloClip?.leadIn ?? 0) : solo.leadIn;
   const split = useSplit(solo.id, onSaved);
 
@@ -60,7 +61,7 @@ export function StemReview({
    * away rather than keep serving an answer to a question that has moved.
    * So this is where the split is offered rather than only explained.
    */
-  if (!solo.stems && !solo.soloClip?.stems) {
+  if (!stems) {
     return (
       <section className="mt-12 border-t border-ink-edge pt-8">
         <h3 className="type-eyebrow text-flame">{t("stemReview.title")}</h3>
@@ -78,26 +79,6 @@ export function StemReview({
       <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
         {t("stemReview.help")}
       </p>
-
-      {solo.soloClip?.stems && solo.stems && (
-        <div className="mt-4 flex gap-2">
-          {(["head", "solo"] as const).map((which) => (
-            <button
-              key={which}
-              type="button"
-              onClick={() => setCut(which)}
-              aria-pressed={cut === which}
-              className={`type-eyebrow border px-3 py-2 text-xs ${
-                cut === which
-                  ? "border-flame bg-flame text-ink"
-                  : "border-ink-edge text-paper-dim hover:text-paper"
-              }`}
-            >
-              {t(which === "head" ? "stemReview.headCut" : "stemReview.soloCut")}
-            </button>
-          ))}
-        </div>
-      )}
 
       <SplitButton split={split} label={t("stemReview.resplit")} force />
 
@@ -118,7 +99,65 @@ export function StemReview({
           );
         })}
       </ul>
+
+      {sources && sources.length > 0 && (
+        <>
+          <h4 className="type-eyebrow mt-8 text-paper-dim">{t("stemReview.sources")}</h4>
+          <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+            {t("stemReview.sourcesHelp")}
+          </p>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {sources.map((source) => (
+              <SourceRow key={source.head} source={source} leadIn={leadIn} />
+            ))}
+          </ul>
+        </>
+      )}
     </section>
+  );
+}
+
+/**
+ * One separator head, to be listened to and nothing else.
+ *
+ * There is no verdict to give here and no marker to set. The question it
+ * answers is where a part went when it is not where it should be — the
+ * upright that the six-stem model files under `guitar`, the piano smeared
+ * through `other` — and the only way to answer it is to hear them.
+ */
+function SourceRow({ source, leadIn }: { source: StemSource; leadIn: number }) {
+  const audio = useSoloAudio(source.audio, 0.9);
+  const owner = useRef({});
+  useEffect(() => {
+    const mine = owner.current;
+    return () => aim(mine, null);
+  }, []);
+
+  const playFrom = useCallback(
+    (from: number) => audio.play(from, (audio.buffer?.duration ?? from) - from),
+    [audio],
+  );
+
+  return (
+    <li className="flex items-center gap-3 border border-ink-edge px-3 py-2">
+      <button
+        type="button"
+        disabled={audio.status !== "ready"}
+        onClick={() => (audio.isPlaying ? audio.stop() : playFrom(leadIn))}
+        onPointerEnter={() => aim(owner.current, { at: leadIn, play: playFrom })}
+        onPointerLeave={() => aim(owner.current, null)}
+        className={`type-eyebrow border px-3 py-1 text-xs transition-colors disabled:opacity-30 ${
+          audio.isPlaying
+            ? "border-flame text-flame"
+            : "border-ink-edge text-paper-dim hover:border-flame hover:text-paper"
+        }`}
+      >
+        {audio.isPlaying ? t("stemReview.stop") : source.head}
+      </button>
+      <span className="type-data text-xs text-paper-faint">
+        {source.level === null ? "—" : `${source.level.toFixed(1)} dBFS`}
+      </span>
+    </li>
   );
 }
 
@@ -131,7 +170,7 @@ export function StemReview({
  * say which cut it is on — the alternative is a button that goes quiet for
  * three minutes and gives no way to tell working from hung.
  */
-function useSplit(id: string, onSaved: (solo: Solo) => void) {
+export function useSplit(id: string, onSaved: (written: Solo[]) => void) {
   const [running, setRunning] = useState(false);
   const [step, setStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,22 +180,22 @@ function useSplit(id: string, onSaved: (solo: Solo) => void) {
       setRunning(true);
       setError(null);
       try {
-        // Bounded rather than `while (true)`: a route that kept answering
-        // "one more" would otherwise spin here for as long as the tab is
-        // open. Four is both cuts twice over.
-        for (let pass = 0; pass < 4; pass += 1) {
+        /*
+         * Both cuts by name, rather than asking for "the record" twice and
+         * hoping the route picks a different one the second time. A record
+         * with no solo marked simply answers that there is nothing to do for
+         * that cut.
+         */
+        for (const cut of ["head", "solo"] as const) {
           const response = await fetch("/api/admin/split", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            // Only the first pass forces: after that the cuts it has already
-            // done are the work, and forcing again would redo them forever.
-            body: JSON.stringify({ id, force: force && pass === 0 }),
+            body: JSON.stringify({ id, force, cut }),
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error ?? "Could not split it");
-          if (data.solo) onSaved(data.solo as Solo);
+          if (data.written?.length) onSaved(data.written as Solo[]);
           setStep(data.split ?? null);
-          if (data.done) break;
         }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -171,15 +210,17 @@ function useSplit(id: string, onSaved: (solo: Solo) => void) {
   return { run, running, step, error };
 }
 
-function SplitButton({
-  split, label, force = false,
+export function SplitButton({
+  split, label, force = false, compact = false,
 }: {
   split: ReturnType<typeof useSplit>;
   label: string;
   force?: boolean;
+  /** In a row rather than in a block, where the margin would push it off. */
+  compact?: boolean;
 }) {
   return (
-    <div className="mt-4">
+    <div className={compact ? "" : "mt-4"}>
       <button
         type="button"
         disabled={split.running}
@@ -188,7 +229,7 @@ function SplitButton({
       >
         {split.running ? t("stemReview.splitting") : label}
       </button>
-      {split.running && (
+      {split.running && !compact && (
         <p className="type-body mt-2 text-xs text-paper-faint">
           {split.step ? `${split.step} — ${t("stemReview.splittingSlow")}` : t("stemReview.splittingSlow")}
         </p>
@@ -206,10 +247,18 @@ function StemRow({
   id: StemId;
   variant: StemVariant;
   leadIn: number;
-  onSaved: (solo: Solo) => void;
+  onSaved: (written: Solo[]) => void;
 }) {
   const audio = useSoloAudio(variant.audio, 0.9);
+  const owner = useRef({});
   const [busy, setBusy] = useState(false);
+  /* Leaving is not the only way the pointer stops being over this — a tab
+     change takes the waveform out from under it, and an aim left pointing
+     at an unmounted player is a space bar that plays nothing. */
+  useEffect(() => {
+    const mine = owner.current;
+    return () => aim(mine, null);
+  }, []);
   const [error, setError] = useState<string | null>(null);
 
   /*
@@ -228,6 +277,19 @@ function StemRow({
   const stored = typeof variant.leadIn === "number" ? variant.leadIn : leadIn;
   const [shown, setShown] = useState(stored);
 
+  /*
+   * Follow the record when it moves underneath — a re-split writes a freshly
+   * detected start, and the row is keyed on the cut and the stem so it is not
+   * remounted by one. Only when the stored value actually changes, or this
+   * would fight the drag it is meant to leave alone.
+   */
+  const lastStored = useRef(stored);
+  useEffect(() => {
+    if (lastStored.current === stored) return;
+    lastStored.current = stored;
+    setShown(stored);
+  }, [stored]);
+
   const label = STEMS.find((stem) => stem.id === id)?.label ?? id;
 
   async function patch(body: Record<string, unknown>) {
@@ -240,7 +302,8 @@ function StemRow({
         body: JSON.stringify({ id: soloId, cut, stem: id, ...body }),
       });
       if (!response.ok) throw new Error(await response.text());
-      onSaved((await response.json()) as Solo);
+      const data = (await response.json()) as { written: Solo[] };
+      onSaved(data.written);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -340,6 +403,14 @@ function StemRow({
           marker={shown}
           onMarkerChange={setShown}
           onCommit={(seconds) => void patch({ leadIn: seconds })}
+          onAim={(at) =>
+            aim(
+              owner.current,
+              at === null
+                ? null
+                : { at, play: (from) => audio.play(from, (audio.buffer?.duration ?? from) - from) },
+            )
+          }
           playhead={
             audio.isPlaying
               ? shown + audio.progress * ((audio.buffer?.duration ?? shown) - shown)

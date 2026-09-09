@@ -37,6 +37,11 @@ interface WaveformProps {
   /** Seconds into the clip currently sounding, or null. */
   playhead: number | null;
   /**
+   * Called with where the pointer is over the wave, and with `null` when it
+   * leaves. What makes "point at a bar and press space" work.
+   */
+  onAim?: (seconds: number | null) => void;
+  /**
    * Pixels tall. The full-height one is a working surface — an entry point
    * placed to a tenth of a second against the shape of the music. A stem's
    * sits under a row of controls with two more below it, and there it only
@@ -46,7 +51,7 @@ interface WaveformProps {
 }
 
 export function Waveform({
-  buffer, marker, onMarkerChange, onCommit, playhead, height = HEIGHT,
+  buffer, marker, onMarkerChange, onCommit, playhead, onAim, height = HEIGHT,
 }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -184,6 +189,13 @@ export function Waveform({
             setDragging(true);
             setFromEvent(event.clientX);
           }}
+          onPointerMove={(event) => {
+            if (!onAim || !buffer) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+            onAim(Number((ratio * buffer.duration).toFixed(3)));
+          }}
+          onPointerLeave={() => onAim?.(null)}
         />
       ) : (
         <div

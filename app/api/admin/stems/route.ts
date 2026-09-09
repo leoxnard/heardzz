@@ -94,19 +94,24 @@ export async function PATCH(request: Request) {
      * audio — so the others take it rather than sitting at "not ruled on"
      * over the same sound. The solo cut is the entry's own and stays put.
      */
+    const written = [solo];
     if (body.cut !== "solo") {
       for (const sibling of library.solos) {
         if (sibling === solo || sibling.audio !== solo.audio) continue;
         const twin = sibling.stems?.[stem];
-        if (twin) Object.assign(twin, variant);
+        if (!twin) continue;
+        Object.assign(twin, variant);
+        written.push(sibling);
       }
     }
 
-    return { solo } as const;
+    // Every record this touched, so the screen holding them does not have to
+    // guess which of its siblings moved.
+    return { written } as const;
   });
 
   if ("error" in outcome) {
     return NextResponse.json({ error: outcome.error }, { status: outcome.status });
   }
-  return NextResponse.json(outcome.solo satisfies Solo);
+  return NextResponse.json({ written: outcome.written satisfies Solo[] });
 }

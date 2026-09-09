@@ -129,6 +129,28 @@ export interface StemVariant {
 
 export type StemSet = Partial<Record<StemId, StemVariant>>;
 
+/**
+ * One separator head on its own, kept for listening rather than for playing.
+ *
+ * The three variants answer "what does this mode sound like". They cannot
+ * answer the question that comes up when one of them is wrong, which is
+ * where the missing part went — a plucked upright the six-stem model routed
+ * into `guitar`, a piano smeared through `other`. Only hearing the heads
+ * settles that, and by the time anybody asks, the separator's own output is
+ * a deleted temp directory.
+ *
+ * Written beside the variants on every split and thrown away on the next
+ * save, because twelve files per record is real disk and their whole job is
+ * to be listened to once while somebody works out what happened.
+ */
+export interface StemSource {
+  /** One of the separator's six: other, piano, guitar, bass, drums, vocals. */
+  head: string;
+  audio: string;
+  /** Mean dBFS over the opening two seconds — an empty head reads as empty. */
+  level: number | null;
+}
+
 /** One cut of a recording: a file, and where in the source it came from. */
 export interface SoloClip {
   audio: string;
@@ -140,6 +162,8 @@ export interface SoloClip {
   clipDuration: number;
   /** Pulled-apart versions of this same cut. Absent until they are made. */
   stems?: StemSet;
+  /** The separator's own heads for this cut, until the next save. */
+  sources?: StemSource[];
 }
 
 export interface Solo {
@@ -219,6 +243,9 @@ export interface Solo {
    * independent of which cut a level opens on.
    */
   stems?: StemSet;
+
+  /** The separator's own heads for the head clip, until the next save. */
+  sources?: StemSource[];
 
   /**
    * A second cut of the same recording, starting at `soloAt` instead of the

@@ -1,23 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Waveform } from "./Waveform";
-import { useSoloAudio } from "@/lib/audio";
-import { StemReview } from "./StemReview";
+import { SplitButton, StemReview, useSplit } from "./StemReview";
+import { aim, pressSpace, useSoloAudio } from "@/lib/audio";
 import { t } from "@/lib/i18n";
-import type { Solo } from "@/lib/types";
+import type { Credit, Solo } from "@/lib/types";
 
 /* ------------------------------------------------------------------
-   One entry, after it has been cut.
+   One recording, after it has been cut.
 
-   Everything structural — where the tune starts, where each solo is, who is
-   playing them — belongs to the marking screen, which works on the whole
-   recording. What is left here is the fine tuning that only needs the clip:
-   nudging the entry point inside it, fixing a name, confirming it.
+   A tune with three soloists on it is three entries in the library, and
+   almost everything about them is one thing said three times: the same
+   credits, the same album, the same twenty seconds off the top pulled apart
+   the same way. Only the solo differs — who, where, and the cut taken from
+   it. Editing them one at a time meant saying it three times and letting the
+   shared half drift apart in between.
+
+   So this edits the recording. The opening and each solo are tabs, because
+   they are the things you actually move between; credits and metadata sit
+   outside them, because they belong to all of it.
    ------------------------------------------------------------------ */
-
-/** What space plays, here and on the marking screen. */
-
 
 /** Below this the marker is sitting in silence, not in a solo. */
 const SILENT_RMS = 0.004;
@@ -46,144 +49,116 @@ function timecode(seconds: number): string {
   return `${m}:${rest < 10 ? "0" : ""}${rest.toFixed(1)}`;
 }
 
+/** Everything except the stems, which no form owns. */
+function comparable(solos: Solo[]) {
+  return JSON.stringify(
+    solos.map((solo) => ({
+      ...solo,
+      stems: undefined,
+      sources: undefined,
+      soloClip: solo.soloClip
+        ? { ...solo.soloClip, stems: undefined, sources: undefined }
+        : undefined,
+    })),
+  );
+}
+
 interface SoloEditorProps {
-  solo: Solo;
-  /** Every entry cut from the same recording, this one included. */
+  /** Every entry cut from this recording, the one on screen included. */
   siblings: Solo[];
-  /** Switch the editor to one of the siblings. */
-  onSelectSibling: (id: string) => void;
   onRemark: (group: Solo[]) => void;
-  onSaved: (solo: Solo) => void;
+  onSaved: (written: Solo[]) => void;
   onDeleted: (id: string) => void;
   /** Names already in the library, offered as completions. */
   known: { artists: string[]; songs: string[]; albums: string[] };
 }
 
-export function SoloEditor({
-  solo, siblings, onSelectSibling, onRemark, onSaved, onDeleted, known,
-}: SoloEditorProps) {
-  const [draft, setDraft] = useState<Solo>(solo);
+export function SoloEditor({ siblings, onRemark, onSaved, onDeleted, known }: SoloEditorProps) {
+  const ordered = useMemo(
+    () => [...siblings].sort((a, b) => a.catalog.localeCompare(b.catalog)),
+    [siblings],
+  );
+
+  const [draft, setDraft] = useState<Solo[]>(ordered);
+  const [tab, setTab] = useState<"opening" | string>("opening");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [discogsLink, setDiscogsLink] = useState("");
+  const [creditsBusy, setCreditsBusy] = useState(false);
   /** Bumped when a save invalidates the stems, to set the split going. */
   const [resplit, setResplit] = useState(0);
 
   /*
-   * Whether anything here differs from what is stored.
-   *
-   * The stems are excluded because they are not this form's to hold: they
-   * are written by the split and ruled on in the review block, and counting
-   * them would make the save button light up because somebody approved a
-   * stem — an edit nobody made and a save that would do nothing.
+   * The recording is one thing, so the first entry carries whatever the whole
+   * of it shares. Which entry is arbitrary and deliberately so: the save
+   * writes those fields onto every one of them.
    */
-  const dirty = useMemo(() => {
-    const bare = (solo: Solo) => ({
-      ...solo,
-      stems: undefined,
-      soloClip: solo.soloClip ? { ...solo.soloClip, stems: undefined } : undefined,
-    });
-    return JSON.stringify(bare(draft)) !== JSON.stringify(bare(solo));
-  }, [draft, solo]);
-  const [error, setError] = useState<string | null>(null);
-  const [discogsLink, setDiscogsLink] = useState("");
-  const [creditsBusy, setCreditsBusy] = useState(false);
-  const [playedFrom, setPlayedFrom] = useState<number | null>(null);
-  const [playedLength, setPlayedLength] = useState(0);
-  /** Which of the two cuts is on the waveform: the head, or the solo. */
-  const [side, setSide] = useState<"head" | "solo">(solo.soloClip ? "solo" : "head");
+  const shared = draft[0];
+  const entry = draft.find((solo) => solo.id === tab) ?? null;
 
-  // No reset effect here: LibraryAdmin keys this component on the solo id,
-  // so selecting a different entry remounts it with fresh state.
+  const dirty = comparable(draft) !== comparable(ordered);
 
-  const clip = side === "solo" && draft.soloClip ? draft.soloClip : null;
-  const audio = useSoloAudio(clip ? clip.audio : draft.audio, 0.9);
-  const marker = clip ? clip.leadIn : draft.leadIn;
+  function editShared<K extends keyof Solo>(key: K, value: Solo[K]) {
+    setDraft((current) => current.map((solo) => ({ ...solo, [key]: value })));
+  }
 
-  const level = useMemo(
-    () => rmsAfter(audio.buffer, marker, 2),
-    [audio.buffer, marker],
-  );
-
-  const playhead = useMemo(() => {
-    if (!audio.isPlaying || playedFrom === null) return null;
-    return playedFrom + audio.progress * playedLength;
-  }, [audio.isPlaying, audio.progress, playedFrom, playedLength]);
+  function editEntry<K extends keyof Solo>(id: string, key: K, value: Solo[K]) {
+    patchEntry(id, (solo) => ({ ...solo, [key]: value }));
+  }
 
   /**
-   * Play whichever cut is on screen, from the marker to the end of it.
+   * Change several of an entry's fields at once.
    *
-   * There used to be a row of buttons offering half a second, two, and six.
-   * They were the game's ladder leaking into the editor, and the editor is
-   * not the game: marking an entry point means hearing what comes after it,
-   * and cutting that off at six seconds only meant pressing the button
-   * again. The clip is twenty-odd seconds. It plays.
+   * The marker on a solo cut needs it: where it sits in the clip and where
+   * it sits in the recording are the same instant from two origins, so the
+   * second is derived from how far the first moved. Two separate updates
+   * read that distance off a render that the first has already invalidated,
+   * and a fast drag walks the source timestamp away from the marker.
    */
-  const preview = useCallback(() => {
-    const rest = (audio.buffer?.duration ?? marker) - marker;
-    setPlayedFrom(marker);
-    setPlayedLength(rest);
-    audio.play(marker, rest);
-  }, [audio, marker]);
-
-  /* Space plays whichever cut is on screen, and stops it again. */
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-      if (event.code !== "Space" && event.key !== " ") return;
-      event.preventDefault();
-      if (audio.isPlaying) audio.stop();
-      else preview();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [audio, preview]);
-
-  function field<K extends keyof Solo>(key: K, value: Solo[K]) {
-    setDraft((current) => ({ ...current, [key]: value }));
+  function patchEntry(id: string, change: (solo: Solo) => Solo) {
+    setDraft((current) => current.map((solo) => (solo.id === id ? change(solo) : solo)));
   }
 
-  /** Moving the marker on the solo cut moves that clip's entry point. */
-  function moveMarker(seconds: number) {
-    if (clip) {
-      setDraft((current) => ({
-        ...current,
-        soloClip: current.soloClip ? { ...current.soloClip, leadIn: seconds } : undefined,
-        soloAt: current.soloAt !== undefined
-          ? Number((current.soloAt + (seconds - clip.leadIn)).toFixed(3))
-          : undefined,
-      }));
-      return;
-    }
-    field("leadIn", seconds);
-  }
-
-  async function save(extra: Partial<Solo> = {}) {
+  async function save() {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("/api/admin/solos", {
+      const response = await fetch("/api/admin/recording", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...draft, ...extra, id: draft.id }),
+        body: JSON.stringify({
+          ...shared,
+          entries: draft.map((solo) => ({
+            id: solo.id,
+            soloist: solo.soloist,
+            soloAt: solo.soloAt,
+            soloClip: solo.soloClip,
+            verified: solo.verified,
+          })),
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Save failed");
 
       /*
-       * The save may have thrown the stems away, because what went into them
+       * The save may have thrown stems away, because what went into them
        * changed — a different soloist takes a different instrument out of
        * the rhythm mix. Noticing it here rather than in `StemReview` is the
-       * difference between "these were just invalidated" and "these are
-       * missing", and only the first should start an hour of separating.
-       * Merely opening a record that was never split must not.
+       * difference between "these were just invalidated" and "these were
+       * never made", and only the first should start an hour of separating.
        */
-      const dropped =
-        (Boolean(draft.stems) && !data.stems) ||
-        (Boolean(draft.soloClip?.stems) && !data.soloClip?.stems);
-      if (dropped) setResplit((n) => n + 1);
+      const written = data.written as Solo[];
+      const dropped = written.some((next) => {
+        const was = draft.find((solo) => solo.id === next.id);
+        return (
+          (Boolean(was?.stems) && !next.stems) ||
+          (Boolean(was?.soloClip?.stems) && !next.soloClip?.stems)
+        );
+      });
 
-      setDraft(data);
-      onSaved(data);
+      setDraft(written);
+      onSaved(written);
+      if (dropped) setResplit((n) => n + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Save failed");
     } finally {
@@ -199,8 +174,8 @@ export function SoloEditor({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          artist: draft.artist,
-          song: draft.song,
+          artist: shared.artist,
+          song: shared.song,
           discogs: discogsLink.trim() || undefined,
         }),
       });
@@ -208,13 +183,15 @@ export function SoloEditor({
       if (!response.ok) throw new Error(data.error ?? "Lookup failed");
       // A link pasted by hand is a correction, not a fallback — it overwrites
       // whatever is here, including a year or an album that were wrong.
-      setDraft((current) => ({
-        ...current,
-        personnel: data.personnel,
-        discogsReleaseId: data.discogsReleaseId,
-        year: data.year || current.year,
-        album: data.album || current.album,
-      }));
+      setDraft((current) =>
+        current.map((solo) => ({
+          ...solo,
+          personnel: data.personnel,
+          discogsReleaseId: data.discogsReleaseId,
+          year: data.year || solo.year,
+          album: data.album || solo.album,
+        })),
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Lookup failed");
     } finally {
@@ -222,115 +199,529 @@ export function SoloEditor({
     }
   }
 
-  function setCredit(index: number, key: "name" | "role", value: string) {
-    setDraft((current) => {
-      const personnel = [...current.personnel];
-      personnel[index] = { ...personnel[index], [key]: value };
-      return { ...current, personnel };
-    });
-  }
-
-  async function remove() {
-    if (!window.confirm(t("library.deleteConfirm", { song: draft.song, artist: draft.artist }))) {
+  async function remove(solo: Solo) {
+    const last = draft.length === 1;
+    if (!window.confirm(t("library.deleteConfirm", { song: solo.song, artist: solo.artist }))) {
       return;
     }
-    await fetch(`/api/admin/solos?id=${encodeURIComponent(draft.id)}`, { method: "DELETE" });
-    onDeleted(draft.id);
+    await fetch(`/api/admin/solos?id=${encodeURIComponent(solo.id)}`, { method: "DELETE" });
+    onDeleted(solo.id);
+    if (!last) setDraft((current) => current.filter((one) => one.id !== solo.id));
+    if (tab === solo.id) setTab("opening");
   }
 
-  // The marker's position in the clip and its position in the recording
-  // describe the same instant; showing both keeps the two connected.
-  const sourceTime = clip
-    ? (draft.soloAt ?? clip.start)
-    : solo.soloStart + (draft.leadIn - solo.leadIn);
+  /**
+   * Approvals, trims and splits are written by the review block, not by this
+   * form, so the form takes them back rather than posting its stale copy
+   * over them on the next save.
+   *
+   * Only the stems, and only for the records the route says it touched — a
+   * ruling on the head clip reaches every sibling, and it names them all
+   * rather than leaving this to guess which of them moved.
+   */
+  const absorbStems = useCallback((written: Solo[]) => {
+    const byId = new Map(written.map((solo) => [solo.id, solo]));
+    setDraft((current) =>
+      current.map((solo) => {
+        const next = byId.get(solo.id);
+        if (!next) return solo;
+        return {
+          ...solo,
+          stems: next.stems,
+          sources: next.sources,
+          soloClip: solo.soloClip
+            ? { ...solo.soloClip, stems: next.soloClip?.stems, sources: next.soloClip?.sources }
+            : solo.soloClip,
+        };
+      }),
+    );
+    onSaved(written);
+  }, [onSaved]);
 
   return (
     <div>
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <span className="type-data text-xs text-paper-faint">{draft.catalog}</span>
-          <h2 className="type-display mt-1 text-3xl text-paper">{draft.artist}</h2>
-          <p className="type-body text-sm text-paper-dim">
-            {draft.song}
-            {draft.album && ` · ${draft.album}`}
-          </p>
-        </div>
+      <Header
+        shared={shared}
+        entries={draft}
+        onRemark={() => onRemark(draft)}
+        onVerified={(value) => setDraft((current) =>
+          current.map((solo) => ({ ...solo, verified: value })),
+        )}
+      />
 
+      <Overview draft={draft} onPick={setTab} onSaved={absorbStems} />
+
+      <Tabs draft={draft} tab={tab} onPick={setTab} />
+
+      {tab === "opening" ? (
+        <OpeningTab
+          shared={shared}
+          saved={ordered[0]}
+          onEdit={editShared}
+          onSaved={absorbStems}
+          resplit={resplit}
+        />
+      ) : entry ? (
+        <SoloTab
+          entry={entry}
+          onEdit={(key, value) => editEntry(entry.id, key, value)}
+          onPatch={(change) => patchEntry(entry.id, change)}
+          onSaved={absorbStems}
+          onRemove={() => remove(entry)}
+          resplit={resplit}
+        />
+      ) : null}
+
+      {/* Outside the tabs, because none of it belongs to one solo. */}
+      <Credits
+        personnel={shared.personnel}
+        onChange={(personnel) => editShared("personnel", personnel)}
+        discogsLink={discogsLink}
+        onDiscogsLink={setDiscogsLink}
+        onFetch={fetchCredits}
+        busy={creditsBusy}
+        releaseId={shared.discogsReleaseId}
+      />
+
+      <Metadata shared={shared} onEdit={editShared} known={known} />
+
+      <div className="sticky bottom-0 z-10 -mx-6 -mb-6 mt-12 border-t border-ink-edge bg-ink px-6 py-4 sm:-mx-10 sm:-mb-10 sm:px-10">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Lit only when there is something to save. A button that is
+              always the loudest thing on screen stops saying anything. */}
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy || !dirty}
+            className={`type-eyebrow px-5 py-3 transition-colors ${
+              dirty
+                ? "bg-flame text-ink hover:bg-paper"
+                : "border border-ink-edge text-paper-faint"
+            } disabled:opacity-40`}
+          >
+            {busy ? t("library.saving") : dirty ? t("library.save") : t("library.saved")}
+          </button>
+          {/* Never lit. Throwing work away is not the thing to reach for. */}
+          <button
+            type="button"
+            onClick={() => setDraft(ordered)}
+            disabled={busy || !dirty}
+            className="type-eyebrow border border-ink-edge px-5 py-3 text-paper-dim transition-colors hover:border-paper-faint hover:text-paper disabled:opacity-30"
+          >
+            {t("library.revert")}
+          </button>
+          <span className="type-body ml-auto text-xs text-paper-faint">
+            {t("library.spaceHint")}
+          </span>
+        </div>
+        {error && <p className="type-body mt-3 text-sm text-flame">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
+   The parts.
+   ------------------------------------------------------------------ */
+
+function Header({
+  shared, entries, onRemark, onVerified,
+}: {
+  shared: Solo;
+  entries: Solo[];
+  onRemark: () => void;
+  onVerified: (value: boolean) => void;
+}) {
+  const solos = entries.filter((entry) => entry.soloClip);
+  /* The list on the left calls a recording confirmed when every entry on it
+     is, so this asks and answers the same question rather than a per-entry
+     one nothing else reads. */
+  const verified = entries.every((entry) => entry.verified);
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <span className="type-data text-xs text-paper-faint">
+          {entries.map((entry) => entry.catalog).join(" · ")}
+        </span>
+        <h2 className="type-display mt-1 text-3xl text-paper">{shared.artist}</h2>
+        <p className="type-body text-sm text-paper-dim">
+          {shared.song}
+          {shared.album && ` · ${shared.album}`}
+        </p>
+        <p className="type-body mt-2 text-xs text-paper-faint">
+          {solos.length === 0
+            ? t("library.extractedNone")
+            : solos.length === 1
+              ? t("library.extractedOne")
+              : t("library.extractedMany", { n: solos.length })}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
         {/* A chip that was only ever a readout, and the one thing the second
-            save button existed to set. Clicking it is the setting now, and
-            the save below writes it with everything else. */}
+            save button used to exist to set. Clicking it is the setting now,
+            and the save below writes it with everything else. */}
         <button
           type="button"
-          onClick={() => field("verified", !draft.verified)}
-          aria-pressed={Boolean(draft.verified)}
+          onClick={() => onVerified(!verified)}
+          aria-pressed={verified}
           title={t("library.verifiedHint")}
-          className={`type-eyebrow px-3 py-1 transition-colors ${
-            draft.verified
+          className={`type-eyebrow px-3 py-2 transition-colors ${
+            verified
               ? "bg-flame text-ink hover:bg-paper"
               : "border border-paper-faint text-paper-dim hover:border-flame hover:text-flame"
           }`}
         >
-          {draft.verified ? t("library.verified") : "unverified"}
+          {verified ? t("library.verified") : "unverified"}
         </button>
-      </div>
-
-      {/* Every entry cut from this recording, so a record with three soloists
-          reads as one record rather than three unrelated rows — and clicking
-          one switches the editor onto it, rather than only naming it. */}
-      {siblings.length > 1 && (
-        <ul className="mt-6 flex flex-wrap gap-2">
-          {siblings.map((sibling) => (
-            <li key={sibling.id}>
-              <button
-                type="button"
-                onClick={() => onSelectSibling(sibling.id)}
-                disabled={sibling.id === draft.id}
-                className={`type-data inline-flex items-center gap-2 border px-3 py-1 text-xs transition-colors disabled:cursor-default ${
-                  sibling.id === draft.id
-                    ? "border-flame text-flame"
-                    : "border-ink-edge text-paper-dim hover:border-paper-faint hover:text-paper"
-                }`}
-              >
-                <span className="block h-2 w-2 rounded-full bg-flame" aria-hidden="true" />
-                {sibling.soloist}
-                {sibling.soloAt !== undefined && ` · ${timecode(sibling.soloAt)}`}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="mt-8 flex flex-wrap items-center gap-3">
-        {(["head", "solo"] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            disabled={value === "solo" && !draft.soloClip}
-            onClick={() => setSide(value)}
-            className={`type-eyebrow border px-4 py-2 transition-colors disabled:opacity-30 ${
-              side === value
-                ? "border-flame bg-flame text-ink"
-                : "border-ink-edge text-paper-dim hover:text-paper"
-            }`}
-          >
-            {value === "head" ? t("library.headClip") : t("library.soloClip")}
-          </button>
-        ))}
         <button
           type="button"
-          onClick={() => onRemark(siblings)}
-          className="type-eyebrow ml-auto border border-paper-faint px-4 py-2 text-paper transition-colors hover:border-flame hover:text-flame"
+          onClick={onRemark}
+          className="type-eyebrow border border-paper-faint px-4 py-2 text-paper transition-colors hover:border-flame hover:text-flame"
         >
           {t("mark.remark")}
         </button>
       </div>
+    </div>
+  );
+}
 
-      <div className="mt-5">
+/**
+ * What this recording has been pulled into, and what state each piece is in.
+ *
+ * The tabs below say where you can go; this says what is there when you get
+ * there — which cuts have been separated, how many of their layers survived
+ * the meters, and how many a person has ruled on. Without it, finding out
+ * meant opening three tabs and reading three badges.
+ */
+function Overview({
+  draft, onPick, onSaved,
+}: {
+  draft: Solo[];
+  onPick: (tab: string) => void;
+  onSaved: (written: Solo[]) => void;
+}) {
+  const rows = [
+    { key: "opening", label: t("library.tabOpening"), stems: draft[0].stems, solo: draft[0] },
+    ...draft.map((entry, index) => ({
+      key: entry.id,
+      label: `${t("library.tabSolo", { n: index + 1 })} · ${entry.soloist}`,
+      stems: entry.soloClip?.stems,
+      solo: entry,
+    })),
+  ];
+
+  return (
+    <ul className="mt-6 divide-y divide-ink-edge border border-ink-edge">
+      {rows.map((row) => {
+        const variants = Object.values(row.stems ?? {});
+        const usable = variants.filter((variant) => variant.usable);
+        const ruled = usable.filter((variant) => variant.approved !== undefined);
+        return (
+          <li key={row.key} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => onPick(row.key)}
+              className="type-eyebrow text-xs text-paper transition-colors hover:text-flame"
+            >
+              {row.label}
+            </button>
+            <span className="type-data text-xs text-paper-faint">
+              {row.stems
+                ? t("library.overviewSplit", { ok: usable.length, ruled: ruled.length })
+                : t("library.overviewUnsplit")}
+            </span>
+            <span className="ml-auto">
+              <SplitAction solo={row.solo} onSaved={onSaved} />
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The one control the overview offers: separate this record again. */
+function SplitAction({ solo, onSaved }: { solo: Solo; onSaved: (written: Solo[]) => void }) {
+  const split = useSplit(solo.id, onSaved);
+  return <SplitButton split={split} label={t("stemReview.resplit")} force compact />;
+}
+
+/**
+ * The opening and each solo, side by side and pinned.
+ *
+ * One row rather than two. Choosing "the solo cut" and then choosing which
+ * solo describes the same thing twice, and on a record with three of them it
+ * left you a click away from knowing which one you were looking at.
+ */
+function Tabs({
+  draft, tab, onPick,
+}: {
+  draft: Solo[];
+  tab: string;
+  onPick: (tab: string) => void;
+}) {
+  const chip = (active: boolean) =>
+    `type-eyebrow whitespace-nowrap border px-4 py-2 text-xs transition-colors ${
+      active
+        ? "border-flame bg-flame text-ink"
+        : "border-ink-edge text-paper-dim hover:border-paper-faint hover:text-paper"
+    }`;
+
+  return (
+    <div className="sticky top-0 z-10 -mx-6 mt-8 overflow-x-auto border-b border-ink-edge bg-ink px-6 py-3 sm:-mx-10 sm:px-10">
+      <div className="flex gap-2">
+        <button type="button" onClick={() => onPick("opening")} className={chip(tab === "opening")}>
+          {t("library.tabOpening")}
+        </button>
+        {draft.map((entry, index) => (
+          <button
+            key={entry.id}
+            type="button"
+            onClick={() => onPick(entry.id)}
+            className={chip(tab === entry.id)}
+            title={entry.catalog}
+          >
+            {t("library.tabSolo", { n: index + 1 })}
+            <span className={`ml-2 ${tab === entry.id ? "text-ink/70" : "text-paper-faint"}`}>
+              {entry.soloist}
+              {entry.soloAt !== undefined && ` · ${timecode(entry.soloAt)}`}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OpeningTab({
+  shared, saved, onEdit, onSaved, resplit,
+}: {
+  shared: Solo;
+  /** As stored, so a moved marker can say where it now lands in the source. */
+  saved: Solo;
+  onEdit: <K extends keyof Solo>(key: K, value: Solo[K]) => void;
+  onSaved: (written: Solo[]) => void;
+  resplit: number;
+}) {
+  return (
+    <>
+      <Cut
+        audioUrl={shared.audio}
+        marker={shared.leadIn}
+        onMarker={(seconds) => onEdit("leadIn", seconds)}
+        sourceTime={saved.soloStart + (shared.leadIn - saved.leadIn)}
+        note={t("library.openingHelp")}
+      />
+
+      <section className="mt-10 border-t border-ink-edge pt-8">
+        <h3 className="type-eyebrow text-flame">{t("library.melody")}</h3>
+        <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+          {t("library.melodyHelp")}
+        </p>
+        {/* Every credited player, because who states a theme is not a thing
+            the instrument decides — the horns usually have it, the piano
+            often doubles it, and on a trio it is the piano alone. */}
+        <ul className="mt-4 flex flex-wrap gap-2">
+          {shared.personnel.map((credit) => {
+            const on = (shared.melody ?? []).includes(credit.name);
+            return (
+              <li key={credit.name}>
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() =>
+                    onEdit(
+                      "melody",
+                      on
+                        ? (shared.melody ?? []).filter((name) => name !== credit.name)
+                        : [...(shared.melody ?? []), credit.name],
+                    )
+                  }
+                  className={`type-eyebrow border px-3 py-2 text-xs transition-colors ${
+                    on
+                      ? "border-flame bg-flame text-ink"
+                      : "border-ink-edge text-paper-dim hover:border-flame hover:text-paper"
+                  }`}
+                >
+                  {credit.name}
+                  <span className={`ml-2 ${on ? "text-ink/70" : "text-paper-faint"}`}>
+                    {credit.role}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {(shared.melody ?? []).length === 0 && (
+          <p className="type-body mt-3 text-xs text-paper-faint">
+            {t("library.melodyGuessed")}
+          </p>
+        )}
+      </section>
+
+      <StemReview solo={shared} cut="head" resplit={resplit} onSaved={onSaved} />
+    </>
+  );
+}
+
+function SoloTab({
+  entry, onEdit, onPatch, onSaved, onRemove, resplit,
+}: {
+  entry: Solo;
+  onEdit: <K extends keyof Solo>(key: K, value: Solo[K]) => void;
+  onPatch: (change: (solo: Solo) => Solo) => void;
+  onSaved: (written: Solo[]) => void;
+  onRemove: () => void;
+  resplit: number;
+}) {
+  const clip = entry.soloClip;
+
+  if (!clip) {
+    return (
+      <div className="mt-8 border border-ink-edge p-6">
+        <p className="type-body text-sm text-paper-dim">{t("library.noSoloCut")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Cut
+        audioUrl={clip.audio}
+        marker={clip.leadIn}
+        onMarker={(seconds) =>
+          /* The marker inside the clip and the timestamp in the recording
+             describe the same instant, so they move together — and in one
+             step, off the same starting value. */
+          onPatch((solo) => {
+            const was = solo.soloClip?.leadIn ?? 0;
+            return {
+              ...solo,
+              soloClip: solo.soloClip ? { ...solo.soloClip, leadIn: seconds } : undefined,
+              soloAt:
+                solo.soloAt === undefined
+                  ? undefined
+                  : Number((solo.soloAt + (seconds - was)).toFixed(3)),
+            };
+          })
+        }
+        sourceTime={entry.soloAt ?? clip.start}
+        note={t("library.soloHelp")}
+      />
+
+      <section className="mt-10 border-t border-ink-edge pt-8">
+        <h3 className="type-eyebrow text-flame">{t("library.soloist")}</h3>
+        <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+          {t("library.soloistHelp")}
+        </p>
+        {/* A native select ignores padding on macOS unless its own appearance
+            is dropped, which is why this one used to sit half the height of
+            every field around it. */}
+        <select
+          value={entry.soloist || entry.artist}
+          onChange={(event) => onEdit("soloist", event.target.value)}
+          className="type-body mt-4 w-full appearance-none border border-ink-edge bg-ink-raised bg-[length:10px] bg-[right_1rem_center] bg-no-repeat px-3 py-3 pr-10 text-sm text-paper focus:border-flame focus:outline-none"
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath fill='%239c9382' d='M0 0h10L5 6z'/%3E%3C/svg%3E\")",
+          }}
+        >
+          {/* The leader is always offered, even when the credits omit them. */}
+          {[
+            ...new Set(
+              [
+                entry.soloist,
+                entry.artist,
+                ...entry.personnel.map((credit) => credit.name).filter(Boolean),
+              ].filter(Boolean),
+            ),
+          ].map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        {entry.soloistRole && (
+          <p className="type-data mt-2 text-xs text-paper-faint">
+            {t("library.soloistPlays", { role: entry.soloistRole })}
+          </p>
+        )}
+      </section>
+
+      <StemReview solo={entry} cut="solo" resplit={resplit} onSaved={onSaved} />
+
+      <div className="mt-8 flex">
+        <button
+          type="button"
+          onClick={onRemove}
+          className="type-eyebrow ml-auto border border-ink-edge px-4 py-2 text-xs text-paper-faint transition-colors hover:border-flame hover:text-flame"
+        >
+          {t("library.deleteSolo")}
+        </button>
+      </div>
+    </>
+  );
+}
+
+/** One cut's waveform, its marker, and what it sounds like. */
+function Cut({
+  audioUrl, marker, onMarker, sourceTime, note,
+}: {
+  audioUrl: string;
+  marker: number;
+  onMarker: (seconds: number) => void;
+  sourceTime: number;
+  note: string;
+}) {
+  const audio = useSoloAudio(audioUrl, 0.9);
+  const owner = useRef({});
+  useEffect(() => {
+    const mine = owner.current;
+    return () => aim(mine, null);
+  }, []);
+  const [playedFrom, setPlayedFrom] = useState<number | null>(null);
+  const [playedLength, setPlayedLength] = useState(0);
+
+  const level = useMemo(() => rmsAfter(audio.buffer, marker, 2), [audio.buffer, marker]);
+
+  const playFrom = useCallback(
+    (from: number) => {
+      const rest = (audio.buffer?.duration ?? from) - from;
+      setPlayedFrom(from);
+      setPlayedLength(rest);
+      audio.play(from, rest);
+    },
+    [audio],
+  );
+
+  /* Space: stop what is sounding, else play whatever the pointer is over,
+     else this clip from its marker. The order is in `pressSpace`. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (event.code !== "Space" && event.key !== " ") return;
+      event.preventDefault();
+      pressSpace(() => playFrom(marker));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [playFrom, marker]);
+
+  const playhead =
+    audio.isPlaying && playedFrom !== null ? playedFrom + audio.progress * playedLength : null;
+
+  return (
+    <>
+      <p className="type-body mt-8 text-xs leading-relaxed text-paper-faint">{note}</p>
+
+      <div className="mt-4">
         <Waveform
           buffer={audio.buffer}
           marker={marker}
-          onMarkerChange={moveMarker}
+          onMarkerChange={onMarker}
           playhead={playhead}
+          onAim={(at) => aim(owner.current, at === null ? null : { at, play: playFrom })}
         />
       </div>
 
@@ -351,276 +742,144 @@ export function SoloEditor({
         </p>
       )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <div className="mt-6">
         <button
           type="button"
-          onClick={() => (audio.isPlaying ? audio.stop() : preview())}
+          onClick={() => (audio.isPlaying ? audio.stop() : playFrom(marker))}
           disabled={audio.status !== "ready"}
           className="type-eyebrow border border-ink-edge px-5 py-2 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-30"
         >
           {audio.isPlaying ? t("library.stop") : t("library.preview")}
         </button>
-        <span className="type-body ml-auto text-xs text-paper-faint">{t("library.spaceHint")}</span>
       </div>
+    </>
+  );
+}
 
-      <section className="mt-12 border-t border-ink-edge pt-8">
-        <h3 className="type-eyebrow text-flame">{t("library.melody")}</h3>
-        <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
-          {t("library.melodyHelp")}
-        </p>
-        {/* Every credited player, because who states a theme is not a thing
-            the instrument decides — the horns usually have it, the piano
-            often doubles it, and on a trio it is the piano alone. */}
-        <ul className="mt-4 flex flex-wrap gap-2">
-          {draft.personnel.map((credit) => {
-            const on = (draft.melody ?? []).includes(credit.name);
-            return (
-              <li key={credit.name}>
-                <button
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() =>
-                    field(
-                      "melody",
-                      on
-                        ? (draft.melody ?? []).filter((name) => name !== credit.name)
-                        : [...(draft.melody ?? []), credit.name],
-                    )
-                  }
-                  className={`type-eyebrow border px-3 py-2 text-xs transition-colors ${
-                    on
-                      ? "border-flame bg-flame text-ink"
-                      : "border-ink-edge text-paper-dim hover:border-flame hover:text-paper"
-                  }`}
-                >
-                  {credit.name}
-                  <span className={`ml-2 ${on ? "text-ink/70" : "text-paper-faint"}`}>
-                    {credit.role}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        {(draft.melody ?? []).length === 0 && (
-          <p className="type-body mt-3 text-xs text-paper-faint">
-            {t("library.melodyGuessed")}
-          </p>
-        )}
-      </section>
+function Credits({
+  personnel, onChange, discogsLink, onDiscogsLink, onFetch, busy, releaseId,
+}: {
+  personnel: Credit[];
+  onChange: (personnel: Credit[]) => void;
+  discogsLink: string;
+  onDiscogsLink: (value: string) => void;
+  onFetch: () => void;
+  busy: boolean;
+  releaseId?: number | string;
+}) {
+  return (
+    <section className="mt-12 border-t border-ink-edge pt-8">
+      <h3 className="type-eyebrow text-flame">
+        {t("library.personnelCount", { n: personnel.length })}
+      </h3>
 
-      {/* Approving a stem writes to the record, so the form has to take that
-          back — otherwise the next save posts a copy without it. Only the
-          stems are merged, so edits in progress here are not thrown away. */}
-      <StemReview
-        solo={solo}
-        resplit={resplit}
-        onSaved={(next) => {
-          setDraft((current) => ({
-            ...current,
-            stems: next.stems,
-            soloClip: current.soloClip
-              ? { ...current.soloClip, stems: next.soloClip?.stems }
-              : current.soloClip,
-          }));
-          onSaved(next);
-        }}
-      />
+      <ul className="mt-4 space-y-2">
+        {personnel.map((credit, i) => (
+          <li key={i} className="flex gap-2">
+            <input
+              type="text"
+              value={credit.name}
+              onChange={(event) =>
+                onChange(personnel.map((c, j) => (i === j ? { ...c, name: event.target.value } : c)))
+              }
+              placeholder="Name"
+              className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-2 text-sm text-paper focus:border-flame focus:outline-none"
+            />
+            <input
+              type="text"
+              value={credit.role}
+              onChange={(event) =>
+                onChange(personnel.map((c, j) => (i === j ? { ...c, role: event.target.value } : c)))
+              }
+              placeholder="Instrument"
+              className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-2 text-sm text-paper focus:border-flame focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => onChange(personnel.filter((_, j) => j !== i))}
+              className="type-eyebrow border border-ink-edge px-3 text-paper-faint transition-colors hover:border-flame hover:text-flame"
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
 
-      {/* Only where there is a solo to be soloing in. The blindfold level is
-          the only one that asks for this and it deals only records that have
-          a solo cut, so on a record without one the question has no answer
-          and storing one invents a fact. */}
-      {draft.soloClip && (
-      <section className="mt-12 border-t border-ink-edge pt-8">
-        <h3 className="type-eyebrow text-flame">{t("library.soloist")}</h3>
-        <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
-          {t("library.soloistHelp")}
-        </p>
-        {/* A native select ignores padding on macOS unless its own appearance
-            is dropped, which is why this one used to sit half the height of
-            every field around it. */}
-        <select
-          value={draft.soloist || draft.artist}
-          onChange={(event) => field("soloist", event.target.value)}
-          className="type-body mt-4 w-full appearance-none border border-ink-edge bg-ink-raised bg-[length:10px] bg-[right_1rem_center] bg-no-repeat px-3 py-3 pr-10 text-sm text-paper focus:border-flame focus:outline-none"
-          style={{
-            backgroundImage:
-              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath fill='%239c9382' d='M0 0h10L5 6z'/%3E%3C/svg%3E\")",
-          }}
-        >
-          {/* The leader is always offered, even when the credits omit them. */}
-          {[
-            ...new Set([
-              draft.soloist,
-              draft.artist,
-              ...draft.personnel.map((credit) => credit.name).filter(Boolean),
-            ].filter(Boolean)),
-          ].map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </section>
-      )}
+      <button
+        type="button"
+        onClick={() => onChange([...personnel, { name: "", role: "" }])}
+        className="type-eyebrow mt-4 w-full border border-ink-edge py-3 text-paper-dim transition-colors hover:border-flame hover:text-flame"
+      >
+        {t("library.addCredit")}
+      </button>
 
-      <section className="mt-12 border-t border-ink-edge pt-8">
-        <h3 className="type-eyebrow text-flame">
-          {t("library.personnelCount", { n: draft.personnel.length })}
-        </h3>
-
-        <ul className="mt-4 space-y-2">
-          {draft.personnel.map((credit, i) => (
-            <li key={i} className="flex gap-2">
-              <input
-                type="text"
-                value={credit.name}
-                onChange={(event) => setCredit(i, "name", event.target.value)}
-                className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-2 text-sm text-paper focus:border-flame focus:outline-none"
-              />
-              <input
-                type="text"
-                value={credit.role}
-                onChange={(event) => setCredit(i, "role", event.target.value)}
-                className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-2 text-sm text-paper-dim focus:border-flame focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setDraft((current) => ({
-                    ...current,
-                    personnel: current.personnel.filter((_, j) => j !== i),
-                  }))
-                }
-                aria-label={`Remove ${credit.name}`}
-                className="type-data px-2 text-paper-faint transition-colors hover:text-flame"
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-
+      <div className="mt-6 flex flex-wrap gap-3">
+        <input
+          type="text"
+          value={discogsLink}
+          onChange={(event) => onDiscogsLink(event.target.value)}
+          placeholder="https://www.discogs.com/release/… (optional)"
+          className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-3 text-sm text-paper focus:border-flame focus:outline-none"
+        />
         <button
           type="button"
-          onClick={() =>
-            setDraft((current) => ({
-              ...current,
-              personnel: [...current.personnel, { name: "", role: "" }],
-            }))
-          }
-          className="type-eyebrow mt-4 w-full border border-ink-edge py-3 text-paper-dim transition-colors hover:border-flame hover:text-flame"
+          onClick={onFetch}
+          disabled={busy}
+          className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
         >
-          {t("library.addCredit")}
+          {busy ? t("library.lookingUp") : t("library.fetchCredits")}
         </button>
-
-        <div className="mt-6 flex flex-wrap gap-3">
-          <input
-            type="text"
-            value={discogsLink}
-            onChange={(event) => setDiscogsLink(event.target.value)}
-            placeholder="https://www.discogs.com/release/… (optional)"
-            className="type-body min-w-0 flex-1 border border-ink-edge bg-ink-raised px-3 py-3 text-sm text-paper focus:border-flame focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={fetchCredits}
-            disabled={creditsBusy}
-            className="type-eyebrow border border-paper-faint px-5 py-3 text-paper transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
-          >
-            {creditsBusy ? t("library.lookingUp") : t("library.fetchCredits")}
-          </button>
-        </div>
-
-        {draft.discogsReleaseId && (
-          <a
-            href={`https://www.discogs.com/release/${draft.discogsReleaseId}`}
-            target="_blank"
-            rel="noreferrer"
-            className="type-data mt-3 inline-block text-xs text-paper-faint underline underline-offset-2 transition-colors hover:text-flame"
-          >
-            discogs release {draft.discogsReleaseId}
-          </a>
-        )}
-      </section>
-
-      <section className="mt-12 border-t border-ink-edge pt-8">
-        <h3 className="type-eyebrow text-flame">Metadata</h3>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Text
-            label="Artist — the answer"
-            value={draft.artist}
-            onChange={(v) => field("artist", v)}
-            options={known.artists}
-          />
-          <Text
-            label="Song"
-            value={draft.song}
-            onChange={(v) => field("song", v)}
-            options={known.songs}
-          />
-          <Text
-            label="Album"
-            value={draft.album}
-            onChange={(v) => field("album", v)}
-            options={known.albums}
-          />
-          <Text
-            label="Year"
-            value={draft.year ? String(draft.year) : ""}
-            onChange={(v) => field("year", Number(v) || 0)}
-          />
-        </div>
-        <div className="mt-4">
-          <Text
-            label="Note shown on reveal"
-            value={draft.note ?? ""}
-            onChange={(v) => field("note", v)}
-          />
-        </div>
-      </section>
-
-      {/* Pinned rather than sitting at whatever point in the form it happens
-          to fall. The editor is long — credits, melody, three stems with a
-          waveform each — and a save button you have to scroll to find is
-          also a "have I changed anything" you have to scroll to answer. */}
-      <div className="sticky bottom-0 z-10 -mx-6 -mb-6 mt-12 border-t border-ink-edge bg-ink px-6 py-4 sm:-mx-10 sm:-mb-10 sm:px-10">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Lit only when there is something to save. A button that is
-              always the loudest thing on screen stops saying anything. */}
-          <button
-            type="button"
-            onClick={() => save()}
-            disabled={busy || !dirty}
-            className={`type-eyebrow px-5 py-3 transition-colors ${
-              dirty
-                ? "bg-flame text-ink hover:bg-paper"
-                : "border border-ink-edge text-paper-faint"
-            } disabled:opacity-40`}
-          >
-            {busy ? t("library.saving") : dirty ? t("library.save") : t("library.saved")}
-          </button>
-          {/* Never lit. Throwing work away is not the thing to reach for. */}
-          <button
-            type="button"
-            onClick={() => setDraft(solo)}
-            disabled={busy || !dirty}
-            className="type-eyebrow border border-ink-edge px-5 py-3 text-paper-dim transition-colors hover:border-paper-faint hover:text-paper disabled:opacity-30"
-          >
-            {t("library.revert")}
-          </button>
-          <button
-            type="button"
-            onClick={remove}
-            className="type-eyebrow ml-auto border border-ink-edge px-5 py-3 text-paper-faint transition-colors hover:border-flame hover:text-flame"
-          >
-            {t("library.delete")}
-          </button>
-        </div>
-        {error && <p className="type-body mt-3 text-sm text-flame">{error}</p>}
       </div>
-    </div>
+      {releaseId && (
+        <p className="type-data mt-2 text-xs text-paper-faint">discogs release {releaseId}</p>
+      )}
+    </section>
+  );
+}
+
+function Metadata({
+  shared, onEdit, known,
+}: {
+  shared: Solo;
+  onEdit: <K extends keyof Solo>(key: K, value: Solo[K]) => void;
+  known: { artists: string[]; songs: string[]; albums: string[] };
+}) {
+  return (
+    <section className="mt-12 border-t border-ink-edge pt-8">
+      <h3 className="type-eyebrow text-flame">{t("library.metadata")}</h3>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <Text
+          label="Artist — the answer"
+          value={shared.artist}
+          onChange={(v) => onEdit("artist", v)}
+          options={known.artists}
+        />
+        <Text
+          label="Song"
+          value={shared.song}
+          onChange={(v) => onEdit("song", v)}
+          options={known.songs}
+        />
+        <Text
+          label="Album"
+          value={shared.album}
+          onChange={(v) => onEdit("album", v)}
+          options={known.albums}
+        />
+        <Text
+          label="Year"
+          value={shared.year ? String(shared.year) : ""}
+          onChange={(v) => onEdit("year", Number(v) || 0)}
+        />
+      </div>
+      <div className="mt-4">
+        <Text
+          label="Note shown on reveal"
+          value={shared.note ?? ""}
+          onChange={(v) => onEdit("note", v)}
+        />
+      </div>
+    </section>
   );
 }
 

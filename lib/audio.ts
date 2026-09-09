@@ -54,6 +54,58 @@ let wakeListenersAttached = false;
  */
 let sounding: { owner: object; stop: () => void } | null = null;
 
+/* ------------------------------------------------------------------
+   What the space bar means.
+
+   A screen with one player can bind space to it. The library screen has
+   four — the clip and the three layers cut from it — and binding space to
+   the first of them makes the other three unreachable from the keyboard and
+   turns "stop this" into "stop this and start something else".
+
+   So space asks two questions in order. Something sounding? Stop it, and
+   only it. Nothing sounding but the pointer over a waveform? Play that one,
+   from where the pointer is, because that is the gesture: point at the bar
+   you want to hear and press space. Neither? Fall back to whatever the
+   screen considers its main clip.
+   ------------------------------------------------------------------ */
+
+let aimed: { owner: object; at: number; play: (at: number) => void } | null = null;
+
+/**
+ * Report the pointer over a waveform, or `null` when it leaves.
+ *
+ * The owner is what makes leaving safe: a component clearing on its way out
+ * must not wipe an aim the pointer has already moved on to.
+ */
+export function aim(
+  owner: object,
+  target: { at: number; play: (at: number) => void } | null,
+): void {
+  if (target === null) {
+    if (aimed?.owner === owner) aimed = null;
+    return;
+  }
+  aimed = { owner, ...target };
+}
+
+/** Whether anything at all is sounding, for a screen that wants to say so. */
+export function anythingSounding(): boolean {
+  return sounding !== null;
+}
+
+/** What space does, given what the screen would do on its own. */
+export function pressSpace(fallback?: () => void): void {
+  if (sounding) {
+    sounding.stop();
+    return;
+  }
+  if (aimed) {
+    aimed.play(aimed.at);
+    return;
+  }
+  fallback?.();
+}
+
 /** The ring/silent switch is an iPhone and iPad part. iPadOS reports
  *  itself as a Mac, so touch points are what separate the two. */
 function hasSilentSwitch(): boolean {

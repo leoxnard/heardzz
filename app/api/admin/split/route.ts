@@ -3,7 +3,7 @@ import path from "node:path";
 import { mutateLibrary, readLibrary } from "@/scripts/extract.mjs";
 import { ensureSeparator, separateClip, separatorIsReady } from "@/scripts/separate.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
-import type { Solo, StemSet } from "@/lib/types";
+import type { Solo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -25,7 +25,12 @@ export async function POST(request: Request) {
   const denied = await requireAdmin();
   if (denied) return denied;
 
-  const body = (await request.json()) as { id?: string; force?: boolean };
+  const body = (await request.json()) as {
+    id?: string;
+    force?: boolean;
+    /** Which cut to do. Omitted means the first one that needs doing. */
+    cut?: "head" | "solo";
+  };
   if (!body.id) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
@@ -37,12 +42,7 @@ export async function POST(request: Request) {
 
   const clipId = (audio: string) => path.basename(audio).replace(/\.mp3$/, "");
 
-  /*
-   * Both cuts, in the order a listener meets them. `apply` is how a result
-   * gets back onto the right half of the record, which differs between the
-   * two: the head clip's stems live on the record and the solo cut's on a
-   * nested object.
-   */
+  /* Both cuts, in the order a listener meets them. */
   const cuts = [
     {
       cut: "head" as const,
@@ -50,7 +50,6 @@ export async function POST(request: Request) {
       clipId: clipId(solo.audio),
       leadIn: solo.leadIn,
       stems: solo.stems,
-      apply: (stems: StemSet) => { solo.stems = stems; },
     },
     ...(solo.soloClip
       ? [{
@@ -59,16 +58,22 @@ export async function POST(request: Request) {
           clipId: clipId(solo.soloClip.audio),
           leadIn: solo.soloClip.leadIn,
           stems: solo.soloClip.stems,
-          apply: (stems: StemSet) => {
-            if (solo.soloClip) solo.soloClip = { ...solo.soloClip, stems };
-          },
         }]
       : []),
   ];
 
-  const pending = body.force ? cuts : cuts.filter((cut) => !cut.stems);
+  /*
+   * One named cut per request when the caller names one, which is how a
+   * forced re-split reaches both of them. Asked for the whole record, a
+   * force would otherwise redo the head, and the next request — no longer
+   * forced, because forcing twice would loop — would find the solo cut still
+   * holding stems and call the job done. So the caller walks the cuts and
+   * this does exactly the one it is handed.
+   */
+  const asked = body.cut ? cuts.filter((cut) => cut.cut === body.cut) : cuts;
+  const pending = body.force ? asked : asked.filter((cut) => !cut.stems);
   if (pending.length === 0) {
-    return NextResponse.json({ done: true, remaining: 0 });
+    return NextResponse.json({ done: true, remaining: 0, written: [] });
   }
 
   if (!separatorIsReady()) {
@@ -88,7 +93,7 @@ export async function POST(request: Request) {
 
   try {
     await ensureSeparator();
-    const stems = await separateClip({
+    const { stems, sources } = await separateClip({
       clipId: target.clipId,
       leadIn: target.leadIn,
       cut: target.cut,
@@ -105,19 +110,37 @@ export async function POST(request: Request) {
      * approved a stem or fixed a title in it; only this cut's result is
      * ours to put back.
      */
-    await mutateLibrary((current) => {
+    const written = await mutateLibrary((current) => {
       const fresh = current.solos.find((entry) => entry.id === solo.id);
       if (!fresh) return false;
-      if (target.cut === "head") fresh.stems = stems;
-      else if (fresh.soloClip) fresh.soloClip = { ...fresh.soloClip, stems };
-      Object.assign(solo, fresh);
+
+      const touched = [fresh];
+      if (target.cut === "head") {
+        fresh.stems = stems;
+        fresh.sources = sources;
+        /*
+         * One head clip, one separation. The siblings name the same file and
+         * would otherwise sit unsplit beside a record that has just been
+         * split — and separating it again for each of them is an hour of a
+         * 2013 CPU spent reproducing the files it already made.
+         */
+        for (const sibling of current.solos) {
+          if (sibling === fresh || sibling.audio !== fresh.audio) continue;
+          sibling.stems = structuredClone(stems);
+          sibling.sources = structuredClone(sources);
+          touched.push(sibling);
+        }
+      } else if (fresh.soloClip) {
+        fresh.soloClip = { ...fresh.soloClip, stems, sources };
+      }
+      return touched;
     });
 
     return NextResponse.json({
       done: pending.length === 1,
       remaining: pending.length - 1,
       split: target.label,
-      solo,
+      written: written === false ? [] : written,
     });
   } catch (error) {
     return NextResponse.json(

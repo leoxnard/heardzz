@@ -957,7 +957,37 @@ export async function separateClip({
       };
     }
 
-    return results;
+    /*
+     * And every head on its own, kept for listening rather than for playing.
+     *
+     * The three variants above answer "what does this mode sound like". They
+     * cannot answer the question that actually comes up when one of them is
+     * wrong, which is where the missing part went — a plucked upright the
+     * six-stem model routed into `guitar`, a piano smeared through `other`.
+     * That is only ever settled by hearing the heads themselves, and by then
+     * the separator's own output is a deleted temp directory.
+     *
+     * So they are written out beside the variants and thrown away again on
+     * the next save. Twelve files per record is real disk, and their whole
+     * job is to be listened to once while somebody works out what happened.
+     */
+    const sources = [];
+    for (const head of STEM_HEADS) {
+      const raw = stem(head);
+      if (!existsSync(raw)) continue;
+      const name = `${clipId}--source-${head}.mp3`;
+      log(`encoding ${head}`);
+      await encodeStem([raw], path.join(AUDIO_DIR, name), {
+        lift: await measuredLift(raw),
+      });
+      sources.push({
+        head,
+        audio: `/api/audio/${name}`,
+        level: await levelAtMarker(raw, leadIn, 2),
+      });
+    }
+
+    return { stems: results, sources };
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => {});
   }

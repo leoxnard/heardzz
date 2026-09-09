@@ -50,7 +50,7 @@ for (const solo of library.solos) {
     artist: solo.artist,
     previous: solo.stems,
     has: () => Boolean(solo.stems),
-    apply: (stems) => { solo.stems = stems; },
+    apply: (stems, sources) => { solo.stems = stems; solo.sources = sources; },
   };
   if (head.clipId) cuts.push(head);
 
@@ -66,7 +66,10 @@ for (const solo of library.solos) {
       artist: solo.artist,
       previous: solo.soloClip.stems,
       has: () => Boolean(solo.soloClip.stems),
-      apply: (stems) => { solo.soloClip.stems = stems; },
+      apply: (stems, sources) => {
+        solo.soloClip.stems = stems;
+        solo.soloClip.sources = sources;
+      },
     });
   }
 }
@@ -182,13 +185,13 @@ for (const [index, cut] of targets.entries()) {
     const already = done.get(key);
     if (already) {
       console.log("  same clip and same lead as a cut already done — reusing it\n");
-      cut.apply(structuredClone(already));
+      cut.apply(structuredClone(already.stems), structuredClone(already.sources));
       await writeLibrary(library);
       reused += 1;
       continue;
     }
 
-    const stems = await separateClip({
+    const { stems, sources } = await separateClip({
       clipId: cut.clipId,
       leadIn: cut.leadIn,
       cut: cut.cut,
@@ -200,8 +203,8 @@ for (const [index, cut] of targets.entries()) {
       onProgress: (step) => process.stdout.write(`  ${step}\n`),
     });
 
-    cut.apply(stems);
-    done.set(key, stems);
+    cut.apply(stems, sources);
+    done.set(key, { stems, sources });
     split += 1;
 
     for (const [id, variant] of Object.entries(stems)) {

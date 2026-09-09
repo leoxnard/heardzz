@@ -825,17 +825,25 @@ export function LibraryAdmin({
             workbench()
           ) : selected ? (
             <SoloEditor
-              key={selected.id}
-              solo={selected}
-              // Everything cut from the same recording is marked together.
+              // Keyed on the recording rather than the entry, so moving
+              // between its solos is a tab and not a remount.
+              key={selected.youtubeId}
               siblings={solos.filter((solo) => solo.youtubeId === selected.youtubeId)}
-              onSelectSibling={setSelectedId}
               onRemark={(group) => setJob({ kind: "remark", solos: group })}
-              onSaved={replace}
+              onSaved={(written) => written.forEach(replace)}
               known={known}
               onDeleted={(id) => {
-                setSolos((current) => current.filter((solo) => solo.id !== id));
-                setSelectedId(null);
+                setSolos((current) => {
+                  const kept = current.filter((solo) => solo.id !== id);
+                  /* Deleting one solo off a recording that has others is not
+                     leaving the record — the editor stays on it and moves to
+                     whatever is left. Only the last one closes it. */
+                  const siblings = kept.filter(
+                    (solo) => solo.youtubeId === selected.youtubeId,
+                  );
+                  setSelectedId(siblings[0]?.id ?? null);
+                  return kept;
+                });
               }}
             />
           ) : (
