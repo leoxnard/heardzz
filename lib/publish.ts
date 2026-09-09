@@ -203,7 +203,7 @@ export async function publishRecord(body: PublishInput): Promise<PublishOutcome>
       if (next.some((kept) => kept.audio === audio || kept.soloClip?.audio === audio)) continue;
       await unlink(clipFile(audio)).catch(() => {});
       // The stems are named after the clip, so they orphan with it.
-      for (const stem of stemFilesFor(path.basename(audio, ".mp3"))) {
+      for (const stem of await stemFilesFor(path.basename(audio, ".mp3"))) {
         await unlink(clipFile(stem)).catch(() => {});
       }
     }

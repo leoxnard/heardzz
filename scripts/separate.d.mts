@@ -25,23 +25,34 @@ export function melodyStemFor(
 ): string;
 
 /** The head out front, which differs between the two cuts. */
-export function leadHeadFor(args: {
+/** What the split of a cut is decided from. */
+export interface SplitShape {
   cut: Cut;
   role?: string;
   personnel?: Credit[];
+  /** Names of whoever states the theme, for the head cut. */
+  melody?: string[];
   artist?: string;
-}): string;
+}
+
+/** The heads out front. Several when the theme is stated in harmony. */
+export function leadHeadsFor(args: SplitShape): string[];
+
+/** The four rhythm instruments the band has, less whoever is out front. */
+export function rhythmHeadsFor(args: SplitShape): string[];
+
+export function melodyHeadsFor(args: {
+  personnel?: Credit[];
+  melody?: string[];
+  role?: string;
+  artist?: string;
+}): string[];
 
 /** The heads with an instrument behind them on this record. */
 export function headsInCredits(personnel: Credit[] | undefined): Set<string>;
 
 /** What a cut's split would come out as, as one comparable string. */
-export function splitShapeFor(args: {
-  cut: Cut;
-  role?: string;
-  personnel?: Credit[];
-  artist?: string;
-}): string;
+export function splitShapeFor(args: SplitShape): string;
 
 export function ensureSeparator(options?: {
   onProgress?: (step: string) => void;
@@ -84,6 +95,7 @@ export function separateClip(args: {
   cut: Cut;
   role?: string;
   personnel?: Credit[];
+  melody?: string[];
   artist?: string;
   /** The stems this cut already had, so an approval can survive a re-split. */
   previous?: StemSet;
@@ -91,7 +103,7 @@ export function separateClip(args: {
 }): Promise<StemSet>;
 
 /** What one variant of a clip is called on disk. */
-export function stemFileName(clipId: string, id: string, leadHead: string): string;
+export function stemFileName(clipId: string, id: string, leadHeads: string | string[]): string;
 
-/** Every file `separateClip` may have written for a clip, as bare filenames. */
-export function stemFilesFor(clipId: string): string[];
+/** Every file `separateClip` has written for a clip, read off the directory. */
+export function stemFilesFor(clipId: string): Promise<string[]>;

@@ -159,6 +159,21 @@ export interface Solo {
   /** The soloist's instrument, copied from their credit. */
   soloistRole?: string;
 
+  /**
+   * Who has the theme at the top of the tune, by name.
+   *
+   * The head clip is not a solo — it is the melody, stated by whoever
+   * states it, and often by more than one of them at once. Read off the
+   * credits it could only ever answer "what instruments are on this
+   * record", which is why Sing Sing Sing came out as a vocal: a singer is
+   * on the session and not on the tune.
+   *
+   * So it is named rather than inferred, like the soloist, and everyone
+   * named here is lifted out of the rhythm section for that cut. Empty
+   * means nobody has said, and the derivation stands in.
+   */
+  melody?: string[];
+
   /** The Discogs release the credits came from, so they can be re-checked. */
   discogsReleaseId?: number;
 

@@ -364,6 +364,52 @@ export function SoloEditor({
 
       {error && <p className="type-body mt-4 text-sm text-flame">{error}</p>}
 
+      <section className="mt-12 border-t border-ink-edge pt-8">
+        <h3 className="type-eyebrow text-flame">{t("library.melody")}</h3>
+        <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
+          {t("library.melodyHelp")}
+        </p>
+        {/* Every credited player, because who states a theme is not a thing
+            the instrument decides — the horns usually have it, the piano
+            often doubles it, and on a trio it is the piano alone. */}
+        <ul className="mt-4 flex flex-wrap gap-2">
+          {draft.personnel.map((credit) => {
+            const on = (draft.melody ?? []).includes(credit.name);
+            return (
+              <li key={credit.name}>
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() =>
+                    field(
+                      "melody",
+                      on
+                        ? (draft.melody ?? []).filter((name) => name !== credit.name)
+                        : [...(draft.melody ?? []), credit.name],
+                    )
+                  }
+                  className={`type-eyebrow border px-3 py-2 text-xs transition-colors ${
+                    on
+                      ? "border-flame bg-flame text-ink"
+                      : "border-ink-edge text-paper-dim hover:border-flame hover:text-paper"
+                  }`}
+                >
+                  {credit.name}
+                  <span className={`ml-2 ${on ? "text-ink/70" : "text-paper-faint"}`}>
+                    {credit.role}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {(draft.melody ?? []).length === 0 && (
+          <p className="type-body mt-3 text-xs text-paper-faint">
+            {t("library.melodyGuessed")}
+          </p>
+        )}
+      </section>
+
       <StemReview solo={solo} onSaved={onSaved} resplit={resplit} />
 
       <section className="mt-12 border-t border-ink-edge pt-8">

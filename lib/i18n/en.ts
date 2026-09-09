@@ -227,6 +227,11 @@ export const en = {
     inSource: "In the source recording",
     preview: "Play from the marker",
     stop: "Stop",
+    melody: "Who has the tune",
+    melodyHelp:
+      "Whoever states the theme at the top, which is what the opening cut plays. Often more than one — two horns in harmony, or a horn the piano doubles. They are lifted out of the rhythm section for that cut, and nobody else is.",
+    melodyGuessed:
+      "Nobody named, so it is guessed from the credits: the singer if there is one, else the horns, else whatever the leader plays. Say it here and the guess stops.",
     verifiedHint:
       "Whether the start point has been confirmed by ear. Players can set the game to deal only these.",
     verified: "Confirmed",

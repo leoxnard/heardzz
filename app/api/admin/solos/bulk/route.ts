@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         if (!audio) continue;
         if (kept.some((solo) => solo.audio === audio || solo.soloClip?.audio === audio)) continue;
         await unlink(path.join(AUDIO_DIR, path.basename(audio))).catch(() => {});
-        for (const stem of stemFilesFor(path.basename(audio, ".mp3"))) {
+        for (const stem of await stemFilesFor(path.basename(audio, ".mp3"))) {
           await unlink(path.join(AUDIO_DIR, stem)).catch(() => {});
         }
       }

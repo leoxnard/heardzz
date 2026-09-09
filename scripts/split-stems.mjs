@@ -18,8 +18,7 @@
 
 import { readLibrary, writeLibrary } from "./extract.mjs";
 import {
-  RHYTHM_HEADS, ensureSeparator, headsInCredits, leadHeadFor, separateClip,
-  separatorIsReady,
+  ensureSeparator, leadHeadsFor, rhythmHeadsFor, separateClip, separatorIsReady,
 } from "./separate.mjs";
 
 const args = process.argv.slice(2);
@@ -47,6 +46,7 @@ for (const solo of library.solos) {
     cut: "head",
     role: solo.soloistRole,
     personnel: solo.personnel,
+    melody: solo.melody,
     artist: solo.artist,
     previous: solo.stems,
     has: () => Boolean(solo.stems),
@@ -62,6 +62,7 @@ for (const solo of library.solos) {
       cut: "solo",
       role: solo.soloistRole,
       personnel: solo.personnel,
+      melody: solo.melody,
       artist: solo.artist,
       previous: solo.soloClip.stems,
       has: () => Boolean(solo.soloClip.stems),
@@ -84,12 +85,13 @@ function basename(audio) {
  * allow into the rhythm mix, so that is the key; everything with the same
  * answer to both gets the first one's result.
  */
+const shapeOf = (cut) => ({
+  cut: cut.cut, role: cut.role, personnel: cut.personnel,
+  melody: cut.melody, artist: cut.artist,
+});
+
 function jobKey(cut) {
-  const heads = [...headsInCredits(cut.personnel)].sort().join("+");
-  const lead = leadHeadFor({
-    cut: cut.cut, role: cut.role, personnel: cut.personnel, artist: cut.artist,
-  });
-  return `${cut.clipId}:${lead}:${heads}`;
+  return `${cut.clipId}:${shapeOf(cut)}`;
 }
 
 /*
@@ -110,21 +112,18 @@ if (plan) {
   let stale = 0;
 
   for (const cut of cuts) {
-    const lead = leadHeadFor({
-    cut: cut.cut, role: cut.role, personnel: cut.personnel, artist: cut.artist,
-  });
-    const present = headsInCredits(cut.personnel);
-    const rhythm = RHYTHM_HEADS.filter((head) => head !== lead && present.has(head));
+    const lead = leadHeadsFor(shapeOf(cut));
+    const rhythm = rhythmHeadsFor(shapeOf(cut));
 
     const have = cut.previous;
     const matches =
-      have?.lead?.heads?.join("+") === lead &&
+      have?.lead?.heads?.join("+") === lead.join("+") &&
       have?.rhythm?.heads?.join("+") === label(rhythm);
     if (!matches) stale += 1;
 
     console.log(
       `${matches ? "  " : "→ "}${cut.label.padEnd(46)} ` +
-        `lead ${lead.padEnd(8)} rhythm ${label(rhythm).padEnd(24)}` +
+        `lead ${label(lead).padEnd(14)} rhythm ${label(rhythm).padEnd(24)}` +
         `${have ? (matches ? "on disk" : "needs splitting") : "not split yet"}`,
     );
   }
@@ -195,6 +194,7 @@ for (const [index, cut] of targets.entries()) {
       cut: cut.cut,
       role: cut.role,
       personnel: cut.personnel,
+      melody: cut.melody,
       artist: cut.artist,
       previous: cut.previous,
       onProgress: (step) => process.stdout.write(`  ${step}\n`),

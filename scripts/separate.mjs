@@ -495,6 +495,43 @@ export function leadStemFor(role) {
  * the soloist's own instrument — which is the trio case, where the piano or
  * the guitar states the theme because there is nothing else to state it.
  */
+/**
+ * The heads carrying the theme, as named on the record.
+ *
+ * `melody` is a list of people, the same shape the soloist is: somebody
+ * listened to the top of the tune and said who has it. Several of them,
+ * because a theme is routinely stated in harmony — two horns, or a horn
+ * and the piano — and there is no reason to make that one name.
+ *
+ * Deriving it from the credits, which is what this did before, could only
+ * ever answer "what instruments are on this record". That is a different
+ * question, and it gets Sing Sing Sing wrong: the session has a singer
+ * credited, the tune is an instrumental, and no amount of reading the
+ * personnel turns that into the clarinet actually playing it.
+ *
+ * Falls back to the derivation when nobody has said. A hundred and forty
+ * cuts do not become unplayable because a field is new.
+ */
+export function melodyHeadsFor({ personnel, melody, role, artist }) {
+  const named = (melody ?? []).map((name) => normalizeName(name)).filter(Boolean);
+
+  if (named.length > 0) {
+    const heads = new Set();
+    for (const credit of personnel ?? []) {
+      if (named.includes(normalizeName(credit?.name))) heads.add(leadStemFor(credit?.role));
+    }
+    /*
+     * Names matching nobody in the credits leave nothing to lift out, and an
+     * empty lead would quietly become "the whole record". Falling through to
+     * the guess is worse than the answer somebody gave and better than a
+     * variant with no heads in it.
+     */
+    if (heads.size > 0) return [...heads];
+  }
+
+  return [melodyStemFor(personnel, role, artist)];
+}
+
 export function melodyStemFor(personnel, role, artist) {
   let sawHorn = false;
   for (const credit of personnel ?? []) {
@@ -551,8 +588,23 @@ function normalizeName(name) {
  * who, so their instrument is the lead. On the head cut nobody is, so the
  * melody is.
  */
-export function leadHeadFor({ cut, role, personnel, artist }) {
-  return cut === "solo" ? leadStemFor(role) : melodyStemFor(personnel, role, artist);
+export function leadHeadsFor({ cut, role, personnel, melody, artist }) {
+  if (cut === "solo") return [leadStemFor(role)];
+  return melodyHeadsFor({ personnel, melody, role, artist });
+}
+
+/**
+ * The rhythm section this cut plays.
+ *
+ * The four instruments a rhythm section is made of, intersected with the
+ * band, less anybody out front — which is the only subtraction there is,
+ * and it only ever removes a rhythm instrument. A horn stating the theme
+ * takes nothing out of here, because horns were never in it.
+ */
+export function rhythmHeadsFor(args) {
+  const lead = leadHeadsFor(args);
+  const present = headsInCredits(args.personnel);
+  return RHYTHM_HEADS.filter((head) => !lead.includes(head) && present.has(head));
 }
 
 /**
@@ -612,8 +664,10 @@ export function headsInCredits(personnel) {
  * `bass` is always the bass head, so it has nothing to disambiguate and
  * keeps its plain name.
  */
-export function stemFileName(clipId, id, leadHead) {
-  return id === "bass" ? `${clipId}--bass.mp3` : `${clipId}--${id}-${leadHead}.mp3`;
+export function stemFileName(clipId, id, leadHeads) {
+  if (id === "bass") return `${clipId}--bass.mp3`;
+  const heads = Array.isArray(leadHeads) ? leadHeads : [leadHeads];
+  return `${clipId}--${id}-${[...heads].sort().join("-")}.mp3`;
 }
 
 /**
@@ -626,11 +680,8 @@ export function stemFileName(clipId, id, leadHead) {
  * fields somebody edited, but whether editing them moved this. Correcting a
  * spelling in the credits does not, and does not cost an hour of separating.
  */
-export function splitShapeFor({ cut, role, personnel, artist }) {
-  const lead = leadHeadFor({ cut, role, personnel, artist });
-  const present = headsInCredits(personnel);
-  const rhythm = RHYTHM_HEADS.filter((head) => head !== lead && present.has(head));
-  return `${lead}|${rhythm.join("+")}`;
+export function splitShapeFor(args) {
+  return `${leadHeadsFor(args).join("+")}|${rhythmHeadsFor(args).join("+")}`;
 }
 
 /**
@@ -650,7 +701,7 @@ export function splitShapeFor({ cut, role, personnel, artist }) {
  * and therefore what the rhythm mix has left in it.
  */
 export async function separateClip({
-  clipId, leadIn, cut, role, personnel, artist, previous, onProgress,
+  clipId, leadIn, cut, role, personnel, melody, artist, previous, onProgress,
 }) {
   const log = onProgress ?? (() => {});
   const mixFile = path.join(AUDIO_DIR, `${clipId}.mp3`);
@@ -672,8 +723,8 @@ export async function separateClip({
     if (files.length === 0) throw new Error("the separator produced nothing");
 
     const stem = (name) => path.join(produced, `${name}.wav`);
-    const leadHead = leadHeadFor({ cut, role, personnel, artist });
-    const present = headsInCredits(personnel);
+    const shape = { cut, role, personnel, melody, artist };
+    const leadHeads = leadHeadsFor(shape);
     const results = {};
 
     /*
@@ -686,7 +737,7 @@ export async function separateClip({
       const inputs = heads.map(stem).filter((file) => existsSync(file));
       if (inputs.length === 0) return;
 
-      const name = stemFileName(clipId, id, leadHead);
+      const name = stemFileName(clipId, id, leadHeads);
       const out = path.join(AUDIO_DIR, name);
 
       log(`encoding ${id}`);
@@ -727,20 +778,8 @@ export async function separateClip({
       };
     };
 
-    await write("lead", [leadHead]);
-    /*
-     * The rhythm section the band actually has, less whoever is out front.
-     * The subtraction only ever removes a rhythm instrument — a piano when
-     * the pianist is soloing — because the horns were never in here to
-     * remove, and a head the band does not contain is bleed rather than a
-     * part. So on a horn record this is the whole rhythm section, every
-     * time, whatever the soloist happens to play.
-     */
-    await write(
-      "rhythm",
-      RHYTHM_HEADS.filter((head) => head !== leadHead && present.has(head)),
-      { lift: false },
-    );
+    await write("lead", leadHeads);
+    await write("rhythm", rhythmHeadsFor(shape), { lift: false });
     /*
      * Bass is its own mode rather than a special case of lead: on most of
      * these records the bassist is not the soloist, and hearing the walk on
@@ -805,18 +844,16 @@ export async function separateClip({
 }
 
 /**
- * Every file `separateClip` may have written for a clip.
+ * Every file `separateClip` has written for a clip.
  *
- * Enumerated rather than looked up, because this is what deleting a record
- * sweeps up behind it and a name it does not think of is a file left on the
- * volume forever. Includes the unsuffixed `--lead`/`--rhythm` that entries
- * split before `stemFileName` are still named by, so removing an old record
- * removes its old files too.
+ * Read off the directory rather than enumerated. It used to be a list of
+ * every name the scheme could produce, which worked while a variant was
+ * named after one head — now a lead can be several, the combinations are
+ * not worth listing, and a name this failed to think of is a file left on
+ * the volume forever. Asking what is actually there also sweeps up the
+ * shapes earlier versions wrote.
  */
-export function stemFilesFor(clipId) {
-  const names = [`${clipId}--bass.mp3`, `${clipId}--lead.mp3`, `${clipId}--rhythm.mp3`];
-  for (const head of STEM_HEADS) {
-    names.push(stemFileName(clipId, "lead", head), stemFileName(clipId, "rhythm", head));
-  }
-  return names;
+export async function stemFilesFor(clipId) {
+  const names = await readdir(AUDIO_DIR).catch(() => []);
+  return names.filter((name) => name.startsWith(`${clipId}--`) && name.endsWith(".mp3"));
 }

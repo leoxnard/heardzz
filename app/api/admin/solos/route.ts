@@ -90,12 +90,15 @@ export async function PATCH(request: Request) {
    * away. The screen re-splits what this drops.
    */
   for (const cut of ["head", "solo"] as const) {
-    const before = splitShapeFor({
-      cut, role: current.soloistRole, personnel: current.personnel, artist: current.artist,
+    const shape = (solo: Solo) => splitShapeFor({
+      cut,
+      role: solo.soloistRole,
+      personnel: solo.personnel,
+      melody: solo.melody,
+      artist: solo.artist,
     });
-    const after = splitShapeFor({
-      cut, role: updated.soloistRole, personnel: updated.personnel, artist: updated.artist,
-    });
+    const before = shape(current);
+    const after = shape(updated);
     if (before === after) continue;
     if (cut === "head") delete updated.stems;
     else if (updated.soloClip) updated.soloClip = { ...updated.soloClip, stems: undefined };
@@ -130,7 +133,7 @@ export async function DELETE(request: Request) {
     if (kept.some((solo) => solo.audio === audio || solo.soloClip?.audio === audio)) continue;
     await unlink(path.join(AUDIO_DIR, path.basename(audio))).catch(() => {});
     // The stems are named after the clip, so they orphan with it.
-    for (const stem of stemFilesFor(path.basename(audio, ".mp3"))) {
+    for (const stem of await stemFilesFor(path.basename(audio, ".mp3"))) {
       await unlink(path.join(AUDIO_DIR, stem)).catch(() => {});
     }
   }
