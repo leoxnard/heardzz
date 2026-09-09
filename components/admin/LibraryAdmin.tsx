@@ -55,6 +55,19 @@ type Job =
   /** A record already in the library, being marked again. */
   | { kind: "remark"; solos: Solo[] };
 
+/** Distinct values already in the library, sorted, for the editor's fields. */
+function knownValues(solos: Solo[]) {
+  const pick = (of: (solo: Solo) => string | undefined) =>
+    [...new Set(solos.map(of).filter((v): v is string => Boolean(v?.trim())))].sort(
+      (a, b) => a.localeCompare(b),
+    );
+  return {
+    artists: pick((solo) => solo.artist),
+    songs: pick((solo) => solo.song),
+    albums: pick((solo) => solo.album),
+  };
+}
+
 export function LibraryAdmin({
   initial,
   suggestions: initialSuggestions,
@@ -130,6 +143,8 @@ export function LibraryAdmin({
       setFetching(null);
     }
   }
+
+  const known = useMemo(() => knownValues(solos), [solos]);
 
   const selected = useMemo(
     () => solos.find((solo) => solo.id === selectedId) ?? null,
@@ -782,7 +797,13 @@ export function LibraryAdmin({
           />
         </aside>
 
-        <main className="p-6 sm:p-10 lg:overflow-y-auto">
+        {/* The padding sits inside rather than on the scroll container. A
+            sticky footer pins to the scrollport's padding box, so padding
+            here would leave it hanging short of the bottom edge — and the
+            scrollport is the window on a narrow screen and this element on a
+            wide one, which no single offset can compensate for. */}
+        <main className="lg:overflow-y-auto">
+          <div className="p-6 sm:p-10">
           {missing > 0 && !job && (
             <div className="mb-8 border border-flame p-5">
               <p className="type-body text-sm text-paper">
@@ -811,6 +832,7 @@ export function LibraryAdmin({
               onSelectSibling={setSelectedId}
               onRemark={(group) => setJob({ kind: "remark", solos: group })}
               onSaved={replace}
+              known={known}
               onDeleted={(id) => {
                 setSolos((current) => current.filter((solo) => solo.id !== id));
                 setSelectedId(null);
@@ -819,6 +841,7 @@ export function LibraryAdmin({
           ) : (
             <p className="type-body max-w-2xl text-sm text-paper-dim">{t("library.intro")}</p>
           )}
+          </div>
         </main>
       </div>
       )}

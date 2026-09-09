@@ -120,7 +120,7 @@ interface LibraryListProps {
 }
 
 export function LibraryList({ solos, selectedId, onSelect, onAdd, onBulkAction }: LibraryListProps) {
-  const [filter, setFilter] = useState<"all" | "unverified">(
+  const [filter, setFilter] = useState<"all" | "unverified" | "verified">(
     solos.some((solo) => !solo.verified) ? "unverified" : "all",
   );
   const [query, setQuery] = useState("");
@@ -167,6 +167,7 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd, onBulkAction }
     const pool = recordings.filter((recording) => {
       if (needle) return recording.haystack.includes(needle);
       if (filter === "unverified" && recording.verified) return false;
+      if (filter === "verified" && !recording.verified) return false;
       return true;
     });
 
@@ -252,7 +253,7 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd, onBulkAction }
         />
 
         <div className="mt-3 flex gap-2">
-          {(["unverified", "all"] as const).map((value) => (
+          {(["unverified", "verified", "all"] as const).map((value) => (
             <button
               key={value}
               type="button"
@@ -264,7 +265,13 @@ export function LibraryList({ solos, selectedId, onSelect, onAdd, onBulkAction }
                   : "border-ink-edge text-paper-dim hover:text-paper"
               }`}
             >
-              {value === "all" ? t("library.filterAll") : t("library.filterUnverified")}
+              {t(
+                value === "all"
+                  ? "library.filterAll"
+                  : value === "verified"
+                    ? "library.filterVerified"
+                    : "library.filterUnverified",
+              )}
             </button>
           ))}
           <span className="type-data ml-auto self-center text-[0.6rem] text-paper-faint">

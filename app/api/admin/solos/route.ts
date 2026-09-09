@@ -19,6 +19,23 @@ export async function GET() {
 }
 
 /** Metadata, the solo entry point inside the clip, and the verified flag. */
+/**
+ * The soloist, where there is a solo to be soloing in.
+ *
+ * The name stays either way — it is the leader's, the library screen lists
+ * records by it, and the id was minted from it. The instrument does not.
+ * `soloistRole` is what `leadStemFor` reads, and on a record nobody has
+ * marked a solo on it is the leader's own credit arrived at by default:
+ * Moanin' came out as an Art Blakey drum solo that way, because Blakey
+ * leads the date and plays drums. Blindfold is the only level that asks who
+ * is soloing and it deals only records with a solo cut, so there is nothing
+ * here to answer and no reason to claim an instrument.
+ */
+function settleSoloist(solo: Solo): { soloist: string; soloistRole?: string } {
+  const settled = resolveSoloist(solo.soloist, solo.artist, solo.personnel);
+  return solo.soloClip ? settled : { soloist: settled.soloist };
+}
+
 export async function PATCH(request: Request) {
   const denied = await requireAdmin();
   if (denied) return denied;
@@ -82,9 +99,19 @@ export async function PATCH(request: Request) {
     ...merged,
     id: current.id,
     soloStart: Number(soloStart.toFixed(3)),
-    // Re-settled on every save, so the instrument follows the name and the
-    // stored spelling always matches the one in the credits.
-    ...resolveSoloist(merged.soloist, merged.artist, merged.personnel),
+    /*
+     * Re-settled on every save, so the instrument follows the name and the
+     * stored spelling always matches the one in the credits.
+     *
+     * And only where there is a solo to be soloing in. The fallback here is
+     * the leader, which on a record nobody has marked a solo on means the
+     * library asserts a soloist that was never chosen — Moanin' came out as
+     * an Art Blakey drum solo that way, because Blakey leads the date and
+     * plays drums. Blindfold is the only level that asks, and it deals only
+     * records with a solo cut, so there is nothing to answer and no reason
+     * to invent one.
+     */
+    ...settleSoloist(merged),
   };
 
   /*
@@ -116,6 +143,35 @@ export async function PATCH(request: Request) {
   }
 
   solos[index] = updated;
+
+  /*
+   * The theme belongs to the recording, not to the entry.
+   *
+   * A record with three soloists on it is three entries over one head clip,
+   * and that clip is the same twenty seconds whichever of them is being
+   * asked about. Left per-entry, naming the horns on one of them left the
+   * other two deriving it — one clip, two answers, and two different files
+   * cut from it. So it travels to the siblings, which are the entries
+   * sharing this head clip.
+   */
+  for (const sibling of solos) {
+    if (sibling === updated || sibling.audio !== updated.audio) continue;
+    if (JSON.stringify(sibling.melody ?? []) === JSON.stringify(updated.melody ?? [])) continue;
+    const shapeOf = (solo: Solo) => splitShapeFor({
+      cut: "head",
+      role: solo.soloistRole,
+      personnel: solo.personnel,
+      melody: solo.melody,
+      artist: solo.artist,
+    });
+    const was = shapeOf(sibling);
+    sibling.melody = updated.melody;
+    // Only where it actually mixes differently, the same test this record's
+    // own stems get. Naming the horns on a record that was already deriving
+    // them changes nothing but the field.
+    if (shapeOf(sibling) !== was) delete sibling.stems;
+  }
+
   await writeLibrary({ ...library, solos });
   return NextResponse.json(updated);
 }

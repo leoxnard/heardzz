@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Waveform } from "./Waveform";
 import { useSoloAudio } from "@/lib/audio";
 import { StemReview } from "./StemReview";
@@ -55,10 +55,12 @@ interface SoloEditorProps {
   onRemark: (group: Solo[]) => void;
   onSaved: (solo: Solo) => void;
   onDeleted: (id: string) => void;
+  /** Names already in the library, offered as completions. */
+  known: { artists: string[]; songs: string[]; albums: string[] };
 }
 
 export function SoloEditor({
-  solo, siblings, onSelectSibling, onRemark, onSaved, onDeleted,
+  solo, siblings, onSelectSibling, onRemark, onSaved, onDeleted, known,
 }: SoloEditorProps) {
   const [draft, setDraft] = useState<Solo>(solo);
   const [busy, setBusy] = useState(false);
@@ -361,32 +363,6 @@ export function SoloEditor({
         <span className="type-body ml-auto text-xs text-paper-faint">{t("library.spaceHint")}</span>
       </div>
 
-      <div className="mt-8 flex flex-wrap gap-3">
-        {/* Lit only when there is something to save. A button that is always
-            the loudest thing on the screen stops saying anything. */}
-        <button
-          type="button"
-          onClick={() => save()}
-          disabled={busy || !dirty}
-          className={`type-eyebrow px-5 py-3 transition-colors ${
-            dirty
-              ? "bg-flame text-ink hover:bg-paper"
-              : "border border-ink-edge text-paper-faint"
-          } disabled:opacity-40`}
-        >
-          {busy ? t("library.saving") : dirty ? t("library.save") : t("library.saved")}
-        </button>
-        <button
-          type="button"
-          onClick={remove}
-          className="type-eyebrow ml-auto border border-ink-edge px-5 py-3 text-paper-faint transition-colors hover:border-flame hover:text-flame"
-        >
-          {t("library.delete")}
-        </button>
-      </div>
-
-      {error && <p className="type-body mt-4 text-sm text-flame">{error}</p>}
-
       <section className="mt-12 border-t border-ink-edge pt-8">
         <h3 className="type-eyebrow text-flame">{t("library.melody")}</h3>
         <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
@@ -451,6 +427,11 @@ export function SoloEditor({
         }}
       />
 
+      {/* Only where there is a solo to be soloing in. The blindfold level is
+          the only one that asks for this and it deals only records that have
+          a solo cut, so on a record without one the question has no answer
+          and storing one invents a fact. */}
+      {draft.soloClip && (
       <section className="mt-12 border-t border-ink-edge pt-8">
         <h3 className="type-eyebrow text-flame">{t("library.soloist")}</h3>
         <p className="type-body mt-2 text-xs leading-relaxed text-paper-faint">
@@ -482,6 +463,7 @@ export function SoloEditor({
           ))}
         </select>
       </section>
+      )}
 
       <section className="mt-12 border-t border-ink-edge pt-8">
         <h3 className="type-eyebrow text-flame">
@@ -570,9 +552,20 @@ export function SoloEditor({
             label="Artist — the answer"
             value={draft.artist}
             onChange={(v) => field("artist", v)}
+            options={known.artists}
           />
-          <Text label="Song" value={draft.song} onChange={(v) => field("song", v)} />
-          <Text label="Album" value={draft.album} onChange={(v) => field("album", v)} />
+          <Text
+            label="Song"
+            value={draft.song}
+            onChange={(v) => field("song", v)}
+            options={known.songs}
+          />
+          <Text
+            label="Album"
+            value={draft.album}
+            onChange={(v) => field("album", v)}
+            options={known.albums}
+          />
           <Text
             label="Year"
             value={draft.year ? String(draft.year) : ""}
@@ -587,26 +580,85 @@ export function SoloEditor({
           />
         </div>
       </section>
+
+      {/* Pinned rather than sitting at whatever point in the form it happens
+          to fall. The editor is long — credits, melody, three stems with a
+          waveform each — and a save button you have to scroll to find is
+          also a "have I changed anything" you have to scroll to answer. */}
+      <div className="sticky bottom-0 z-10 -mx-6 -mb-6 mt-12 border-t border-ink-edge bg-ink px-6 py-4 sm:-mx-10 sm:-mb-10 sm:px-10">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Lit only when there is something to save. A button that is
+              always the loudest thing on screen stops saying anything. */}
+          <button
+            type="button"
+            onClick={() => save()}
+            disabled={busy || !dirty}
+            className={`type-eyebrow px-5 py-3 transition-colors ${
+              dirty
+                ? "bg-flame text-ink hover:bg-paper"
+                : "border border-ink-edge text-paper-faint"
+            } disabled:opacity-40`}
+          >
+            {busy ? t("library.saving") : dirty ? t("library.save") : t("library.saved")}
+          </button>
+          {/* Never lit. Throwing work away is not the thing to reach for. */}
+          <button
+            type="button"
+            onClick={() => setDraft(solo)}
+            disabled={busy || !dirty}
+            className="type-eyebrow border border-ink-edge px-5 py-3 text-paper-dim transition-colors hover:border-paper-faint hover:text-paper disabled:opacity-30"
+          >
+            {t("library.revert")}
+          </button>
+          <button
+            type="button"
+            onClick={remove}
+            className="type-eyebrow ml-auto border border-ink-edge px-5 py-3 text-paper-faint transition-colors hover:border-flame hover:text-flame"
+          >
+            {t("library.delete")}
+          </button>
+        </div>
+        {error && <p className="type-body mt-3 text-sm text-flame">{error}</p>}
+      </div>
     </div>
   );
 }
 
+/**
+ * A metadata field, with the names already in the library behind it.
+ *
+ * The artist is the answer the game checks, so two spellings of one player
+ * are two players — "Cannonball Adderley" and "Cannonball Adderly" group
+ * apart in the list, and a round dealt from one will not accept the other.
+ * A datalist rather than anything cleverer: it suggests without insisting,
+ * which is right for a field whose whole job is that new names are allowed.
+ */
 function Text({
-  label, value, onChange,
+  label, value, onChange, options,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  options?: string[];
 }) {
+  const listId = useId();
   return (
     <label className="block">
       <span className="type-eyebrow text-paper-faint">{label}</span>
       <input
         type="text"
         value={value}
+        list={options && options.length > 0 ? listId : undefined}
         onChange={(event) => onChange(event.target.value)}
         className="type-body mt-2 w-full border border-ink-edge bg-ink-raised px-3 py-3 text-sm text-paper focus:border-flame focus:outline-none"
       />
+      {options && options.length > 0 && (
+        <datalist id={listId}>
+          {options.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+      )}
     </label>
   );
 }
