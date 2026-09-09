@@ -11,7 +11,9 @@
    on its own; they are only visible from above.
    ------------------------------------------------------------------ */
 
-import { readLibrary } from "./extract.mjs";
+import { statSync } from "node:fs";
+import path from "node:path";
+import { AUDIO_DIR, readLibrary } from "./extract.mjs";
 import { RHYTHM_HEADS, leadHeadsFor, rhythmHeadsFor } from "./separate.mjs";
 
 const library = await readLibrary();
@@ -106,6 +108,56 @@ total += report(
       `${solo.artist} — ${solo.song}`.padEnd(44) +
       `lead ${lead.join("+")}`.padEnd(16) +
       `rhythm ${rhythmHeadsFor(shapeOf(solo, "head")).join("+") || "—"}`),
+);
+
+/*
+ * Stems older than the clip they were lifted out of.
+ *
+ * A record marked again keeps its id, so the clip is written over the old
+ * one — same filename, different music — and until this was fixed the stems
+ * of the previous cut stayed on disk and stayed on any sibling entry that
+ * was not itself re-marked. Nothing downstream can tell: the names still
+ * resolve, the levels still measure fine, and the only symptom is that the
+ * soloist layer and the full mix are two different moments of the tune.
+ *
+ * The clock settles it. A stem is always written after the clip it came
+ * from, so a stem file older than its clip belongs to a cut that is gone.
+ */
+const olderThanItsClip = [];
+for (const [, group] of recordings) {
+  for (const solo of group) {
+    const cuts = [
+      { label: "opening", audio: solo.audio, stems: solo.stems },
+      { label: "solo", audio: solo.soloClip?.audio, stems: solo.soloClip?.stems },
+    ];
+    for (const cut of cuts) {
+      if (!cut.audio || !cut.stems) continue;
+      const clip = statSync(path.join(AUDIO_DIR, path.basename(cut.audio)), {
+        throwIfNoEntry: false,
+      });
+      if (!clip) continue;
+      const behind = Object.entries(cut.stems)
+        .map(([id, variant]) => ({
+          id,
+          file: statSync(path.join(AUDIO_DIR, path.basename(variant.audio)), {
+            throwIfNoEntry: false,
+          }),
+        }))
+        // A second of slack: one split writes the clip's stems in a burst.
+        .filter(({ file }) => file && file.mtimeMs < clip.mtimeMs - 1000)
+        .map(({ id }) => id);
+      if (behind.length > 0) {
+        olderThanItsClip.push(
+          `${solo.artist} — ${solo.song}`.padEnd(44) +
+            `${cut.label} · ${behind.join(", ")}`,
+        );
+      }
+    }
+  }
+}
+total += report(
+  "Stems older than the clip they came from. Split these again",
+  olderThanItsClip,
 );
 
 console.log(

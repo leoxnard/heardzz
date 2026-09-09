@@ -194,7 +194,46 @@ export async function publishRecord(body: PublishInput): Promise<PublishOutcome>
     ...solos.filter((solo) => !writtenIds.has(solo.id) && !replaces.has(solo.id)),
     ...written,
   ];
+
+  /*
+   * Every clip this just cut again, under the name it already had.
+   *
+   * Marking a record a second time keeps the entry's id, so the clip is
+   * written straight over the old one — different music, same filename. The
+   * stems of that clip are still on disk under names derived from the same
+   * id, and any entry still naming them would play a layer lifted out of a
+   * cut that no longer exists: the rhythm section from one place in the tune
+   * under a full mix from another. The entries written above carry no stems,
+   * but a sibling that was not re-marked keeps its own, and it points at
+   * exactly those files.
+   *
+   * So the record forgets them and the files go. `split-stems` makes them
+   * again, from the clip that is actually there now.
+   */
+  const recut = new Set(
+    [head.audio, ...written.map((solo) => solo.soloClip?.audio)]
+      .filter((audio): audio is string => Boolean(audio))
+      .map((audio) => path.basename(audio, ".mp3")),
+  );
+  const stale = (audio?: string) => Boolean(audio && recut.has(path.basename(audio, ".mp3")));
+
+  for (const solo of next) {
+    if (stale(solo.audio)) {
+      delete solo.stems;
+      delete solo.sources;
+    }
+    if (solo.soloClip && stale(solo.soloClip.audio)) {
+      solo.soloClip = { ...solo.soloClip, stems: undefined, sources: undefined };
+    }
+  }
+
   await writeLibrary({ ...library, solos: next });
+
+  for (const outputId of recut) {
+    for (const stem of await stemFilesFor(outputId)) {
+      await unlink(path.join(AUDIO_DIR, stem)).catch(() => {});
+    }
+  }
 
   // A dropped entry's clip may still belong to one that stayed.
   for (const solo of dropped) {
