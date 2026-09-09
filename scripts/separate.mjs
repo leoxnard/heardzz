@@ -306,6 +306,90 @@ export function stemIsUsable({ openLevel, relativeLevel, onsetPeak, onsetRelativ
 }
 
 /**
+ * How far past the marker a stem first actually sounds.
+ *
+ * A tune that opens on a piano pickup has no horns in its first bar, so the
+ * horn stem is silent where the round starts and the round opens on nothing
+ * — Along Came Betty, and half a dozen others. The answer is not to refuse
+ * the stem. It is to start it where it starts.
+ *
+ * Measured against the stem's own peak rather than an absolute floor. An
+ * absolute one cannot work here: it has to sit low enough for a hushed
+ * ballad entry and that is also where separation residue lives, so −40 dB
+ * put St. Thomas' entry at 0.18 s, which is bleed, when the tenor is at
+ * 0.64. Thirty under the loudest thing in the file is the part playing, on
+ * every cut in the library.
+ *
+ * This says nothing about whether the stem is worth playing. A file that is
+ * bleed throughout still has a loudest moment and will still get an answer
+ * from this — and then fail `judgeStem` at that moment, which is the check
+ * that compares it against the record rather than against itself.
+ */
+const ONSET_BELOW_PEAK = 30;
+/** Trimming may not eat the round: this much clip has to survive it. */
+const KEEP_SECONDS = 10;
+
+export async function onsetOffset(file, from, duration) {
+  const peak = await filePeak(file);
+  if (peak === null) return 0;
+
+  const room = Math.max(0, (duration ?? Infinity) - from - KEEP_SECONDS);
+  if (room === 0) return 0;
+
+  try {
+    const { stderr } = await run(
+      "ffmpeg",
+      [
+        "-hide_banner", "-nostats",
+        "-ss", String(from),
+        "-i", file,
+        "-af", `silencedetect=n=${(peak - ONSET_BELOW_PEAK).toFixed(1)}dB:d=0.1`,
+        "-f", "null", "-",
+      ],
+      { maxBuffer: 1024 * 1024 * 8 },
+    );
+    // Silence that does not begin at the marker means the stem is already
+    // sounding there, and there is nothing to trim.
+    if (!/silence_start:\s*-?0(\.0+)?\b/.test(stderr)) return 0;
+    const match = /silence_end:\s*([\d.]+)/.exec(stderr);
+    if (!match) return 0;
+    return Math.min(Number(match[1]), room);
+  } catch {
+    return 0;
+  }
+}
+
+/** Length of a file in seconds, or null when ffprobe cannot say. */
+async function durationOf(file) {
+  try {
+    const { stdout } = await run(
+      "ffprobe",
+      ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file],
+      { maxBuffer: 1024 * 64 },
+    );
+    const seconds = Number(stdout.trim());
+    return Number.isFinite(seconds) ? seconds : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Loudest sample in a whole file, in dBFS. */
+async function filePeak(file) {
+  try {
+    const { stderr } = await run(
+      "ffmpeg",
+      ["-hide_banner", "-nostats", "-i", file, "-af", "volumedetect", "-f", "null", "-"],
+      { maxBuffer: 1024 * 1024 * 8 },
+    );
+    const match = /max_volume:\s*(-?[\d.]+)/.exec(stderr ?? "");
+    return match ? Number(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Judge one stem against the mix it came out of.
  *
  * Two files, deliberately, because the two questions want different ones.
@@ -709,6 +793,7 @@ export async function separateClip({
 
   await ensureSeparator({ onProgress });
 
+  const clipSeconds = await durationOf(mixFile);
   const work = await mkdtemp(path.join(tmpdir(), "heardzz-stems-"));
   try {
     log("separating");
@@ -757,10 +842,23 @@ export async function separateClip({
         before.heads.length === heads.length &&
         before.heads.every((head, i) => head === heads[i]);
 
+      /*
+       * Where this variant's own round opens. Carried over rather than
+       * re-detected when the mix is unchanged, because the same heads
+       * produce the same file and the answer would be the same — and
+       * because a start somebody set by hand in the library screen is a
+       * judgement, which a re-split has no business overruling.
+       */
+      const start =
+        sameMix && typeof before.leadIn === "number"
+          ? before.leadIn
+          : Number((leadIn + (await onsetOffset(out, leadIn, clipSeconds))).toFixed(3));
+
       results[id] = {
         audio: `/api/audio/${name}`,
         head: heads.length === 1 ? heads[0] : undefined,
         heads,
+        leadIn: start,
         ...(sameMix && before.approved !== undefined ? { approved: before.approved } : {}),
         /*
          * The level comes off the raw head and the opening off the encode —
@@ -768,12 +866,16 @@ export async function separateClip({
          * point at, and judging its parts separately would be judging things
          * nobody hears on their own, so it is measured whole after it is
          * assembled.
+         *
+         * Judged at the variant's own start, since that is where its round
+         * begins. Measuring the horns over a piano pickup they are not in
+         * answers a question nobody is going to ask of them.
          */
         ...(await judgeStem({
           stemFile: inputs.length === 1 ? inputs[0] : out,
           playedFile: out,
           mixFile,
-          leadIn,
+          leadIn: start,
         })),
       };
     };

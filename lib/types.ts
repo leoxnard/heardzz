@@ -60,6 +60,21 @@ export interface StemVariant {
   model?: string;
 
   /**
+   * Where this variant's own round opens, in the clip's own seconds.
+   *
+   * A stem shares its parent cut's file geometry but not always its entry
+   * point. Along Came Betty opens on a piano pickup, so the horns are not
+   * there yet: played from the cut's marker the melody mode opens on
+   * silence. Started where the horns come in, it opens on the melody.
+   *
+   * Detected when the stem is cut and adjustable by hand in the library
+   * screen, which is the only way to settle the cases a meter reads as
+   * sound and an ear reads as the room. Absent means the parent's marker,
+   * which is what every variant cut before this used.
+   */
+  leadIn?: number;
+
+  /**
    * Whether anything actually sounds in the window the round opens on.
    *
    * Not every record has a lead voice to pull out — a piano trio has no horn,

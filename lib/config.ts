@@ -219,7 +219,19 @@ export function playedClip(
 
   if (stem === "full") return base;
   const variant = stemsOf(solo, level)?.[stem as StemId];
-  return variant?.usable ? { ...base, audio: variant.audio } : base;
+  if (!variant?.usable) return base;
+
+  /*
+   * A stem shares the cut's file, so the length and the geometry come from
+   * it — but not always the entry point. A horn that comes in after a piano
+   * pickup opens its own round where it comes in, or the melody mode plays
+   * the silence it was lifted out of.
+   */
+  return {
+    ...base,
+    audio: variant.audio,
+    leadIn: typeof variant.leadIn === "number" ? variant.leadIn : base.leadIn,
+  };
 }
 
 /**

@@ -67,6 +67,13 @@ export function judgeOnset(args: {
   leadIn: number;
 }): Promise<{ onsetPeak: number | null; onsetRelative: number | null }>;
 
+/** How far past a marker a stem first sounds, in seconds. */
+export function onsetOffset(
+  file: string,
+  from: number,
+  duration?: number | null,
+): Promise<number>;
+
 export function stemIsUsable(measured: {
   openLevel?: number | null;
   relativeLevel?: number | null;

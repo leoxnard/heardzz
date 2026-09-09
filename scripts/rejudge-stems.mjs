@@ -35,7 +35,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { AUDIO_DIR, readLibrary, writeLibrary } from "./extract.mjs";
-import { judgeOnset, stemIsUsable, STEM_IDS } from "./separate.mjs";
+import { judgeOnset, onsetOffset, stemIsUsable, STEM_IDS } from "./separate.mjs";
 
 const args = process.argv.slice(2);
 const write = args.includes("--write");
@@ -121,7 +121,19 @@ for (const cut of cuts) {
      * verdict is taken from both. Which means this pass can only ever take
      * a stem out of play, never put one in on numbers it did not measure.
      */
-    const onset = await judgeOnset({ playedFile: file, mixFile, leadIn: cut.leadIn });
+    /*
+     * The start too, where nobody has set one. A stem cut before there was
+     * such a thing is holding its parent's marker, which on a tune that
+     * opens on a pickup is a round that opens on silence — the thing this
+     * pass exists to stop shipping.
+     */
+    const start =
+      typeof variant.leadIn === "number"
+        ? variant.leadIn
+        : Number((cut.leadIn + (await onsetOffset(file, cut.leadIn))).toFixed(3));
+    variant.leadIn = start;
+
+    const onset = await judgeOnset({ playedFile: file, mixFile, leadIn: start });
     const usable = stemIsUsable({
       openLevel: variant.openLevel,
       relativeLevel: variant.relativeLevel,
@@ -136,7 +148,8 @@ for (const cut of cuts) {
       console.log(
         `${was ? "-" : "+"} ${cut.label.padEnd(38)} ${id.padEnd(6)} ` +
           `${was ? "ok → EMPTY" : "EMPTY → ok"}  ` +
-          `(opening ${onset.onsetPeak} dBFS, ${onset.onsetRelative} dB against the mix)`,
+          `(opens at ${start.toFixed(2)}s, ${onset.onsetPeak} dBFS, ` +
+          `${onset.onsetRelative} dB against the mix)`,
       );
     }
 

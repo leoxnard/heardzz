@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Waveform } from "./Waveform";
 import { useSoloAudio } from "@/lib/audio";
 import { STEMS } from "@/lib/config";
 import { t } from "@/lib/i18n";
@@ -211,16 +212,25 @@ function StemRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * Where this stem starts. Held locally while it is being dragged so the
+   * waveform follows the pointer, and only sent when the drag ends — every
+   * intermediate pixel would otherwise be a write and a re-judgement.
+   */
+  const stored = typeof variant.leadIn === "number" ? variant.leadIn : leadIn;
+  const [marker, setMarker] = useState(stored);
+  const shown = busy ? marker : stored;
+
   const label = STEMS.find((stem) => stem.id === id)?.label ?? id;
 
-  async function rule(approved: boolean | null) {
+  async function patch(body: Record<string, unknown>) {
     setBusy(true);
     setError(null);
     try {
       const response = await fetch("/api/admin/stems", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: soloId, cut, stem: id, approved }),
+        body: JSON.stringify({ id: soloId, cut, stem: id, ...body }),
       });
       if (!response.ok) throw new Error(await response.text());
       onSaved((await response.json()) as Solo);
@@ -230,6 +240,8 @@ function StemRow({
       setBusy(false);
     }
   }
+
+  const rule = (approved: boolean | null) => patch({ approved });
 
   /*
    * A stem the meters already rejected is shown and can still be played —
@@ -272,7 +284,7 @@ function StemRow({
           onClick={() =>
             audio.isPlaying
               ? audio.stop()
-              : audio.play(leadIn, (audio.buffer?.duration ?? leadIn) - leadIn)
+              : audio.play(shown, (audio.buffer?.duration ?? shown) - shown)
           }
           className="type-eyebrow border border-ink-edge px-4 py-2 text-xs text-paper-dim hover:border-flame hover:text-paper disabled:opacity-40"
         >
@@ -307,6 +319,28 @@ function StemRow({
         >
           {t("stemReview.reject")}
         </button>
+      </div>
+
+      {/* The start, on the stem's own waveform. Pre-processed when the stem
+          is cut — a horn that comes in after a piano pickup is found there
+          rather than played over — and adjustable here, because whether a
+          faint scrape is the entry or the room is not a thing a meter
+          settles. */}
+      <div className="mt-3">
+        <Waveform
+          buffer={audio.buffer}
+          marker={shown}
+          onMarkerChange={(seconds) => {
+            setMarker(seconds);
+            void patch({ leadIn: seconds });
+          }}
+          playhead={audio.isPlaying ? shown + audio.progress * ((audio.buffer?.duration ?? shown) - shown) : null}
+        />
+        <p className="type-data mt-1 text-xs text-paper-faint">
+          {t("stemReview.startsAt", { at: shown.toFixed(2) })}
+          {Math.abs(shown - leadIn) > 0.005 &&
+            ` · ${t("stemReview.trimmed", { by: (shown - leadIn).toFixed(2) })}`}
+        </p>
       </div>
 
       {audio.status === "error" && (

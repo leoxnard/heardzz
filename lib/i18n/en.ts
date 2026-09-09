@@ -170,6 +170,8 @@ export const en = {
     approve: "Deal it",
     reject: "Never deal it",
     play: "Play it",
+    startsAt: "Starts at {at}s",
+    trimmed: "{by}s past the cut's own marker",
     stop: "Stop",
     split: "Pull it apart",
     resplit: "Split it again",
