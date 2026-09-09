@@ -94,6 +94,7 @@ export async function POST(request: Request) {
       cut: target.cut,
       role: solo.soloistRole,
       personnel: solo.personnel,
+      artist: solo.artist,
       previous: target.stems,
     });
 

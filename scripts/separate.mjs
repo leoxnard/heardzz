@@ -495,7 +495,7 @@ export function leadStemFor(role) {
  * the soloist's own instrument — which is the trio case, where the piano or
  * the guitar states the theme because there is nothing else to state it.
  */
-export function melodyStemFor(personnel, role) {
+export function melodyStemFor(personnel, role, artist) {
   let sawHorn = false;
   for (const credit of personnel ?? []) {
     const text = String(credit?.role ?? "").toLowerCase();
@@ -511,7 +511,35 @@ export function melodyStemFor(personnel, role) {
     if (head === "vocals") return "vocals";
     if (head === "other") sawHorn = true;
   }
-  return sawHorn ? "other" : leadStemFor(role);
+  if (sawHorn) return "other";
+
+  /*
+   * No horn and no singer, so the theme belongs to whoever leads the group —
+   * the piano in a piano trio, the guitar in a guitar trio.
+   *
+   * The leader rather than the soloist, because a recording with two
+   * soloists marked on it is two entries over one head clip, and the head
+   * clip is the same twenty seconds either way. Read from the soloist it
+   * gave Gloria's Step a piano theme under Bill Evans' entry and a bass
+   * theme under Scott LaFaro's — one clip, two answers, and the tune only
+   * has one. The leader is a property of the recording, so siblings agree.
+   */
+  const wanted = normalizeName(artist);
+  if (wanted) {
+    const leader = (personnel ?? []).find((c) => normalizeName(c?.name) === wanted);
+    if (leader?.role) return leadStemFor(leader.role);
+  }
+  return leadStemFor(role);
+}
+
+/** Matches `resolveSoloist`, so the leader is found by the same spelling. */
+function normalizeName(name) {
+  return String(name ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 /**
@@ -523,8 +551,8 @@ export function melodyStemFor(personnel, role) {
  * who, so their instrument is the lead. On the head cut nobody is, so the
  * melody is.
  */
-export function leadHeadFor({ cut, role, personnel }) {
-  return cut === "solo" ? leadStemFor(role) : melodyStemFor(personnel, role);
+export function leadHeadFor({ cut, role, personnel, artist }) {
+  return cut === "solo" ? leadStemFor(role) : melodyStemFor(personnel, role, artist);
 }
 
 /**
@@ -598,8 +626,8 @@ export function stemFileName(clipId, id, leadHead) {
  * fields somebody edited, but whether editing them moved this. Correcting a
  * spelling in the credits does not, and does not cost an hour of separating.
  */
-export function splitShapeFor({ cut, role, personnel }) {
-  const lead = leadHeadFor({ cut, role, personnel });
+export function splitShapeFor({ cut, role, personnel, artist }) {
+  const lead = leadHeadFor({ cut, role, personnel, artist });
   const present = headsInCredits(personnel);
   const rhythm = RHYTHM_HEADS.filter((head) => head !== lead && present.has(head));
   return `${lead}|${rhythm.join("+")}`;
@@ -622,7 +650,7 @@ export function splitShapeFor({ cut, role, personnel }) {
  * and therefore what the rhythm mix has left in it.
  */
 export async function separateClip({
-  clipId, leadIn, cut, role, personnel, previous, onProgress,
+  clipId, leadIn, cut, role, personnel, artist, previous, onProgress,
 }) {
   const log = onProgress ?? (() => {});
   const mixFile = path.join(AUDIO_DIR, `${clipId}.mp3`);
@@ -644,7 +672,7 @@ export async function separateClip({
     if (files.length === 0) throw new Error("the separator produced nothing");
 
     const stem = (name) => path.join(produced, `${name}.wav`);
-    const leadHead = leadHeadFor({ cut, role, personnel });
+    const leadHead = leadHeadFor({ cut, role, personnel, artist });
     const present = headsInCredits(personnel);
     const results = {};
 

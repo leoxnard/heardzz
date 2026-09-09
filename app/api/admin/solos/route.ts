@@ -90,8 +90,12 @@ export async function PATCH(request: Request) {
    * away. The screen re-splits what this drops.
    */
   for (const cut of ["head", "solo"] as const) {
-    const before = splitShapeFor({ cut, role: current.soloistRole, personnel: current.personnel });
-    const after = splitShapeFor({ cut, role: updated.soloistRole, personnel: updated.personnel });
+    const before = splitShapeFor({
+      cut, role: current.soloistRole, personnel: current.personnel, artist: current.artist,
+    });
+    const after = splitShapeFor({
+      cut, role: updated.soloistRole, personnel: updated.personnel, artist: updated.artist,
+    });
     if (before === after) continue;
     if (cut === "head") delete updated.stems;
     else if (updated.soloClip) updated.soloClip = { ...updated.soloClip, stems: undefined };

@@ -20,6 +20,8 @@ export function leadStemFor(role: string | undefined): string;
 export function melodyStemFor(
   personnel: Credit[] | undefined,
   role: string | undefined,
+  /** The name on the sleeve, used to find the leader among the credits. */
+  artist?: string,
 ): string;
 
 /** The head out front, which differs between the two cuts. */
@@ -27,6 +29,7 @@ export function leadHeadFor(args: {
   cut: Cut;
   role?: string;
   personnel?: Credit[];
+  artist?: string;
 }): string;
 
 /** The heads with an instrument behind them on this record. */
@@ -37,6 +40,7 @@ export function splitShapeFor(args: {
   cut: Cut;
   role?: string;
   personnel?: Credit[];
+  artist?: string;
 }): string;
 
 export function ensureSeparator(options?: {
@@ -80,6 +84,7 @@ export function separateClip(args: {
   cut: Cut;
   role?: string;
   personnel?: Credit[];
+  artist?: string;
   /** The stems this cut already had, so an approval can survive a re-split. */
   previous?: StemSet;
   onProgress?: (step: string) => void;

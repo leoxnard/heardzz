@@ -47,6 +47,7 @@ for (const solo of library.solos) {
     cut: "head",
     role: solo.soloistRole,
     personnel: solo.personnel,
+    artist: solo.artist,
     previous: solo.stems,
     has: () => Boolean(solo.stems),
     apply: (stems) => { solo.stems = stems; },
@@ -61,6 +62,7 @@ for (const solo of library.solos) {
       cut: "solo",
       role: solo.soloistRole,
       personnel: solo.personnel,
+      artist: solo.artist,
       previous: solo.soloClip.stems,
       has: () => Boolean(solo.soloClip.stems),
       apply: (stems) => { solo.soloClip.stems = stems; },
@@ -84,7 +86,9 @@ function basename(audio) {
  */
 function jobKey(cut) {
   const heads = [...headsInCredits(cut.personnel)].sort().join("+");
-  const lead = leadHeadFor({ cut: cut.cut, role: cut.role, personnel: cut.personnel });
+  const lead = leadHeadFor({
+    cut: cut.cut, role: cut.role, personnel: cut.personnel, artist: cut.artist,
+  });
   return `${cut.clipId}:${lead}:${heads}`;
 }
 
@@ -106,7 +110,9 @@ if (plan) {
   let stale = 0;
 
   for (const cut of cuts) {
-    const lead = leadHeadFor({ cut: cut.cut, role: cut.role, personnel: cut.personnel });
+    const lead = leadHeadFor({
+    cut: cut.cut, role: cut.role, personnel: cut.personnel, artist: cut.artist,
+  });
     const present = headsInCredits(cut.personnel);
     const rhythm = RHYTHM_HEADS.filter((head) => head !== lead && present.has(head));
 
@@ -189,6 +195,7 @@ for (const [index, cut] of targets.entries()) {
       cut: cut.cut,
       role: cut.role,
       personnel: cut.personnel,
+      artist: cut.artist,
       previous: cut.previous,
       onProgress: (step) => process.stdout.write(`  ${step}\n`),
     });
