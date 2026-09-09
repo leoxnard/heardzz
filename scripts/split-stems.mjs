@@ -18,13 +18,15 @@
 
 import { readLibrary, writeLibrary } from "./extract.mjs";
 import {
-  ensureSeparator, headsInCredits, leadHeadFor, separateClip, separatorIsReady,
+  RHYTHM_HEADS, ensureSeparator, headsInCredits, leadHeadFor, separateClip,
+  separatorIsReady,
 } from "./separate.mjs";
 
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 const force = args.includes("--force");
 const headOnly = args.includes("--head-only");
+const plan = args.includes("--plan");
 
 const library = await readLibrary();
 
@@ -84,6 +86,47 @@ function jobKey(cut) {
   const heads = [...headsInCredits(cut.personnel)].sort().join("+");
   const lead = leadHeadFor({ cut: cut.cut, role: cut.role, personnel: cut.personnel });
   return `${cut.clipId}:${lead}:${heads}`;
+}
+
+/*
+ * What each cut would be split into, without splitting anything.
+ *
+ * Separating the library is an hour and three quarters on the machine this
+ * runs on, and almost none of that time is spent deciding which heads go
+ * where — that part is the credits and one lookup, and it is also the part
+ * that has been wrong twice. So it can be read on its own, in a second,
+ * before committing the afternoon to it.
+ *
+ * `on disk` says whether the files already match: the heads that went into
+ * a variant are stored on it, so a plan can be checked against what is
+ * actually there rather than against what was last intended.
+ */
+if (plan) {
+  const label = (heads) => (heads.length === 0 ? "—" : heads.join("+"));
+  let stale = 0;
+
+  for (const cut of cuts) {
+    const lead = leadHeadFor({ cut: cut.cut, role: cut.role, personnel: cut.personnel });
+    const present = headsInCredits(cut.personnel);
+    const rhythm = RHYTHM_HEADS.filter((head) => head !== lead && present.has(head));
+
+    const have = cut.previous;
+    const matches =
+      have?.lead?.heads?.join("+") === lead &&
+      have?.rhythm?.heads?.join("+") === label(rhythm);
+    if (!matches) stale += 1;
+
+    console.log(
+      `${matches ? "  " : "→ "}${cut.label.padEnd(46)} ` +
+        `lead ${lead.padEnd(8)} rhythm ${label(rhythm).padEnd(24)}` +
+        `${have ? (matches ? "on disk" : "needs splitting") : "not split yet"}`,
+    );
+  }
+
+  console.log(
+    `\n${cuts.length} cut(s). ${cuts.length - stale} already match, ${stale} would change.`,
+  );
+  process.exit(0);
 }
 
 const targets = cuts.filter((cut) => force || !cut.has());
