@@ -6,6 +6,8 @@ import { callerKey, take } from "@/lib/rate-limit";
 import { tidalAvailable, tidalUnavailableReason } from "@/lib/tidal";
 import { resolveArtistName, resolveArtistNames } from "@/lib/taste-text";
 import { insideOf, tasteFromArtistIds } from "@/lib/taste";
+import { lastfmAvailable, tagTracks } from "@/lib/lastfm";
+import { candidatesFromTracks } from "@/lib/lastfm-candidates";
 
 /**
  * Called direct rather than through the AI Gateway: this deployment already
@@ -27,6 +29,16 @@ const READ_WINDOW_MS = 60 * 60 * 1000;
 
 /** Enough names to widen out from without asking the model to name every act in a genre. */
 const MAX_ARTISTS = 8;
+
+/**
+ * How many of a tag's top tracks to read when the words turn out to be a
+ * genre. Plenty: the fetch is capped at forty an hour, so this is the whole
+ * supply a sitting could ever get through.
+ */
+const TAG_TRACKS = 200;
+
+/** Last.fm tags are free text, but not unboundedly so. */
+const MAX_TAG = 60;
 
 const taste = z.object({
   artists: z
@@ -74,18 +86,21 @@ async function namesFrom(text: string): Promise<string[]> {
  * MusicBrainz (`lib/taste-text.ts`) before anything below this can widen out
  * from it the way `/api/foryou/plan` widens out from a link.
  *
- * `mode: "only"` is the other reading of the same words, and the same
+ * `mode: "exact"` is the other reading of the same words, and the same
  * distinction the link door already draws between playing what is on a list
- * and using it as a description. Here it means: that artist, their
- * catalogue, nobody else. No model is asked — the words are the name — and
- * nothing is widened.
+ * and using it as a description. Here it means: play precisely what was
+ * typed and widen nothing — that artist's catalogue if the words are a
+ * name, that tag's best-known records if they are a genre. No model is
+ * asked either way, because there is nothing to interpret: the words are
+ * the answer.
  */
 export async function POST(request: Request) {
   const body = (await request.json()) as { text?: string; mode?: string };
-  const only = body.mode === "only";
+  // "only" was this mode's name while it could only mean an artist.
+  const exact = body.mode === "exact" || body.mode === "only";
 
-  // Only the widening reading needs a model; naming one artist does not.
-  if (!only && !process.env.GEMINI_API_KEY) {
+  // Only the widening reading needs a model; taking the words at their word does not.
+  if (!exact && !process.env.GEMINI_API_KEY) {
     return NextResponse.json(
       { error: "GEMINI_API_KEY is not set." },
       { status: 400 },
@@ -109,51 +124,86 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (only) {
-      const artist = await resolveArtistName(text);
-      if (!artist) {
+    if (exact) {
+      /*
+       * Both readings of "exactly this" at once, because only one of them
+       * will answer and there is no telling which from the words alone.
+       * "Michael Brecker" is a name to place through MusicBrainz; "hard
+       * bop" is a Last.fm tag. Run in parallel rather than one after the
+       * other: a name that cannot be placed is the slow case — a search and
+       * up to eight ISRC lookups before it gives up — and a genre would
+       * have waited out every bit of it before its own second-long read
+       * even started.
+       */
+      const [artist, tracks] = await Promise.all([
+        resolveArtistName(text),
+        lastfmAvailable()
+          ? tagTracks(text.slice(0, MAX_TAG), TAG_TRACKS).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+
+      if (artist) {
         /*
-         * Not the same claim as "TIDAL has never heard of them". TIDAL
-         * cannot be searched by name at all, so a typed one is placed by way
-         * of MusicBrainz — and that walk fails on its own terms often enough
-         * that saying otherwise would be wrong. It is also not always the
-         * same answer twice.
+         * The same call an artist link takes — see `insideOf`. One name in,
+         * one catalogue out, and the sitting is whatever that artist recorded.
          */
-        return NextResponse.json(
-          {
-            error:
-              `Couldn't place "${text}". A typed name is looked up through ` +
-              "MusicBrainz before TIDAL can be asked, and that lookup came " +
-              "back empty — worth trying again, or spelling it as the records do.",
-          },
-          { status: 400 },
-        );
+        const inside = await insideOf({ kind: "artist", id: artist.id });
+        if (inside.candidates.length > 0) {
+          return NextResponse.json({
+            source: inside.source,
+            reached: inside.reached,
+            candidates: inside.candidates,
+            target: artist.id,
+            /*
+             * A catalogue arrives whole, so there is nothing to fetch more of
+             * — and a replan would come back without the mode and quietly
+             * widen the sitting into the neighbours this reading excludes.
+             */
+            replan: false,
+          });
+        }
       }
 
       /*
-       * The same call an artist link takes — see `insideOf`. One name in,
-       * one catalogue out, and the sitting is whatever that artist recorded.
+       * Nobody of that name, or nothing playable under them: read the words
+       * as a genre instead. Last.fm already knows what a tag is best known
+       * for, so this needs no model and nothing to resolve — and the records
+       * it names are the most listened to under that tag, which is exactly
+       * what makes them nameable.
        */
-      const inside = await insideOf({ kind: "artist", id: artist.id });
-      if (inside.candidates.length === 0) {
-        return NextResponse.json(
-          { error: `Nothing well enough known under ${artist.name}.` },
-          { status: 400 },
-        );
+      if (tracks.length > 0) {
+        const { candidates } = await candidatesFromTracks(tracks);
+        if (candidates.length > 0) {
+          const tag = text.slice(0, MAX_TAG);
+          return NextResponse.json({
+            source: tag,
+            reached: Array.from(new Set(candidates.map((c) => c.artist))).slice(0, 12),
+            candidates,
+            /* The tag itself, so the sitting has something to be saved
+               under. Never asked against — one read was the whole supply. */
+            target: tag,
+            replan: false,
+          });
+        }
       }
 
-      return NextResponse.json({
-        source: inside.source,
-        reached: inside.reached,
-        candidates: inside.candidates,
-        target: artist.id,
-        /*
-         * A catalogue arrives whole, so there is nothing to fetch more of —
-         * and a replan would come back without the mode and quietly widen
-         * the sitting into the neighbours this reading exists to exclude.
-         */
-        replan: false,
-      });
+      /*
+       * Not the same claim as "nobody has heard of them". TIDAL cannot be
+       * searched by name at all, so a typed one is placed by way of
+       * MusicBrainz — and that walk fails on its own terms often enough that
+       * saying otherwise would be wrong. It is also not always the same
+       * answer twice.
+       */
+      return NextResponse.json(
+        {
+          error:
+            `Couldn't place "${text}" as an artist or as a genre. A typed name ` +
+            "is looked up through MusicBrainz before TIDAL can be asked, and " +
+            "that lookup came back empty — worth trying again, spelling it as " +
+            "the records do, or letting the other reading widen from it.",
+        },
+        { status: 400 },
+      );
     }
 
     const names = await namesFrom(text);

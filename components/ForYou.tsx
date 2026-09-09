@@ -55,7 +55,22 @@ export function ForYou() {
   const [words, setWords] = useState("");
   const [listener, setListener] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * The message and the door it belongs to. Which door matters: three
+   * panels sit side by side, and a line under all of them saying "couldn't
+   * place that" names no field to go and fix.
+   */
+  const [error, setError] = useState<{ door: string; message: string } | null>(null);
+  /**
+   * The door a sitting is being read through, or null.
+   *
+   * Progress used to be handed to all three at once — every door reading
+   * "Fetching (0 ready)" while one of them was working, which said that
+   * pressing any of them had started something. Only the one that was
+   * pressed says anything now; the other two are simply out of reach until
+   * it is done.
+   */
+  const [activeDoor, setActiveDoor] = useState<string | null>(null);
   const [solos, setSolos] = useState<Solo[]>([]);
   const [source, setSource] = useState("");
   const [reached, setReached] = useState<string[]>([]);
@@ -269,10 +284,15 @@ export function ForYou() {
    * for a link, or the artist ids `from-text` resolved to for words, since
    * there is no link to paste a second time.
    */
-  async function beginSession(request: () => Promise<Response>, resolvedTarget: string) {
+  async function beginSession(
+    request: () => Promise<Response>,
+    resolvedTarget: string,
+    door: string,
+  ) {
     if (running.current) return;
     running.current = true;
     const mine = (sitting.current += 1);
+    setActiveDoor(door);
     setPhase("planning");
     setError(null);
     setSolos([]);
@@ -317,7 +337,10 @@ export function ForYou() {
     } catch (cause) {
       if (sitting.current !== mine) return;
       setPhase("idle");
-      setError(cause instanceof Error ? cause.message : "Could not read that");
+      setError({
+        door,
+        message: cause instanceof Error ? cause.message : "Could not read that",
+      });
     } finally {
       running.current = false;
     }
@@ -326,10 +349,11 @@ export function ForYou() {
   /**
    * A pasted link, read one of two ways.
    *
-   * "inside" plays what is on the list. "wider" reads it for who is on it
-   * and widens to artists who sound like them — the only reading this door
-   * had, and still the right one for somebody handing over a playlist as a
-   * description of their taste rather than as a set of questions.
+   * "inside" plays what is on the list — or, for an artist link, what that
+   * artist recorded. "wider" reads it for who is on it and widens to
+   * artists who sound like them, which is the right reading for somebody
+   * handing over a playlist as a description of their taste rather than as
+   * a set of questions.
    */
   function start(mode: "inside" | "wider") {
     const trimmed = target.trim();
@@ -341,64 +365,31 @@ export function ForYou() {
           body: JSON.stringify({ target: trimmed, mode }),
         }),
       trimmed,
+      "tidal",
     );
   }
 
-  /** Same sitting, built from a few words instead of a pasted link. */
-  function startFromWords() {
+  /**
+   * The same sitting again, built from a few words instead of a link, and
+   * read the same two ways the link door reads a link.
+   *
+   * "exact" takes the words at their word: an artist's catalogue if they
+   * are a name, a tag's best-known records if they are a genre — see
+   * `/api/foryou/from-text`, which tries both and needs no model for
+   * either. "wider" hands them to one, which names artists out of whatever
+   * was said and widens from those.
+   */
+  function startFromWords(mode: "exact" | "wider") {
     const trimmed = words.trim();
     void beginSession(
       () =>
         fetch("/api/foryou/from-text", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: trimmed }),
+          body: JSON.stringify({ text: trimmed, ...(mode === "exact" ? { mode } : {}) }),
         }),
       "",
-    );
-  }
-
-  /**
-   * The same words, taken as one name and nothing else.
-   *
-   * The door above reads a taste and widens from it, which is the wrong
-   * answer to "I want to hear Dexter Gordon" — that sitting should be
-   * Dexter Gordon, not the people either side of him. Same distinction the
-   * TIDAL door already draws between playing a list and using it as a
-   * description, and it needs no model: the words are the name.
-   */
-  function startOnlyArtist() {
-    const trimmed = words.trim();
-    void beginSession(
-      () =>
-        fetch("/api/foryou/from-text", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: trimmed, mode: "only" }),
-        }),
-      "",
-    );
-  }
-
-  /**
-   * The same words, taken as a genre rather than as a description.
-   *
-   * The door above hands them to a model, which names artists known for the
-   * style, each of which is then placed against TIDAL — right for "Michael
-   * Brecker only, but not the fusion", and a great deal of machinery for
-   * the word "bebop". Last.fm already knows what a tag is best known for,
-   * and answers in about a second.
-   */
-  function startFromTag() {
-    const trimmed = words.trim();
-    void beginSession(
-      () =>
-        fetch("/api/foryou/tag", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tag: trimmed }),
-        }),
-      "",
+      "words",
     );
   }
 
@@ -425,6 +416,7 @@ export function ForYou() {
           body: JSON.stringify({ user: trimmed, mode }),
         }),
       "",
+      "lastfm",
     );
   }
 
@@ -464,6 +456,7 @@ export function ForYou() {
     setPlayed(0);
     setRemaining(0);
     setError(null);
+    setActiveDoor(null);
     setPhase("idle");
   }
 
@@ -552,12 +545,16 @@ export function ForYou() {
   }
 
   const busy = phase === "planning" || phase === "fetching";
-  const label =
+  /*
+   * What the working door says while it works. Only that one: the other two
+   * get `null` and stay quiet.
+   */
+  const status =
     phase === "planning"
       ? "Reading your taste"
       : phase === "fetching"
         ? `Fetching (${ready} ready)`
-        : "Build me a round";
+        : null;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -595,23 +592,19 @@ export function ForYou() {
             />
           }
           title="What you already played"
-          blurb="Your username is enough. Play the records already in your history — you have heard every one of them — or keep only your taste and go out to artists you have not."
+          blurb="Your Last.fm username, or your profile link."
           placeholder="your last.fm username"
           value={listener}
           onChange={setListener}
-          onSubmit={() => startFromLastfm("known")}
-          busy={busy}
-          label={label}
           lowercase
-          submitLabel="Records I know"
-          submitHint="Easiest — only tunes your own history says you have played"
-          alternates={[
-            {
-              label: "One step out",
-              hint: "Harder — records next to yours, which you have not played",
-              onSubmit: () => startFromLastfm("nearby"),
-            },
+          choices={[
+            { key: "known", label: "Records I know" },
+            { key: "nearby", label: "Records like mine" },
           ]}
+          onStart={(key) => startFromLastfm(key as "known" | "nearby")}
+          busy={busy}
+          status={activeDoor === "lastfm" ? status : null}
+          error={error?.door === "lastfm" ? error.message : null}
         />
         <Door
           index="02"
@@ -625,23 +618,19 @@ export function ForYou() {
               className="h-4 w-auto opacity-90"
             />
           }
-          title="A playlist you keep"
-          blurb="Paste a public TIDAL playlist, artist or track. Play what is on it, or use it as a description of what you want."
-          placeholder="https://tidal.com/playlist/…"
+          title="A playlist or an artist"
+          blurb="Paste a public TIDAL playlist, artist or track link."
+          placeholder="tidal.com/playlist/… or /artist/…"
           value={target}
           onChange={setTarget}
-          onSubmit={() => start("inside")}
-          busy={busy}
-          label={label}
-          submitLabel="What is on it"
-          submitHint="Easier — the records actually on the list, nothing else"
-          alternates={[
-            {
-              label: "Things like it",
-              hint: "Harder — artists who sound like the ones on the list",
-              onSubmit: () => start("wider"),
-            },
+          choices={[
+            { key: "inside", label: "Records from it" },
+            { key: "wider", label: "Records like it" },
           ]}
+          onStart={(key) => start(key as "inside" | "wider")}
+          busy={busy}
+          status={activeDoor === "tidal" ? status : null}
+          error={error?.door === "tidal" ? error.message : null}
         />
         <Door
           index="03"
@@ -660,26 +649,18 @@ export function ForYou() {
             </span>
           }
           title="Whatever you can name"
-          blurb="Name whoever you want to hear, or just describe it — a genre, an era, a mood. Play that one artist alone, or let a model widen out from what you said."
-          placeholder="Michael Brecker only, or hard bop"
+          blurb="An artist, or a genre — whichever you type."
+          placeholder="Michael Brecker, or hard bop"
           value={words}
           onChange={setWords}
-          onSubmit={startFromWords}
-          busy={busy}
-          label={label}
-          submitHint="A model reads artists out of it, then widens from those"
-          alternates={[
-            {
-              label: "Only that artist",
-              hint: "One name, their catalogue, nobody else — nothing widened",
-              onSubmit: startOnlyArtist,
-            },
-            {
-              label: "Just the genre",
-              hint: "Skip the model — the best-known records under that tag",
-              onSubmit: startFromTag,
-            },
+          choices={[
+            { key: "exact", label: "Exactly that" },
+            { key: "wider", label: "Records like it" },
           ]}
+          onStart={(key) => startFromWords(key as "exact" | "wider")}
+          busy={busy}
+          status={activeDoor === "words" ? status : null}
+          error={error?.door === "words" ? error.message : null}
         />
       </div>
 
@@ -688,7 +669,6 @@ export function ForYou() {
           Reaching for {reached.join(", ")}.
         </p>
       )}
-      {error && <p className="type-body mt-6 text-sm text-flame">{error}</p>}
       </div>
     </div>
   );
@@ -763,13 +743,12 @@ function Door({
   placeholder,
   value,
   onChange,
-  onSubmit,
+  choices,
+  onStart,
   busy,
-  label,
+  status,
+  error,
   lowercase = false,
-  submitLabel,
-  submitHint,
-  alternates,
 }: {
   index: string;
   accent: string;
@@ -779,27 +758,35 @@ function Door({
   placeholder: string;
   value: string;
   onChange: (next: string) => void;
-  onSubmit: () => void;
+  /**
+   * The readings this door offers, named so the name is the whole
+   * explanation. They used to carry a line of hint each — "harder: records
+   * next to yours, which you have not played" — and three columns of that
+   * is more prose than anybody reads standing at a choice. A name that
+   * needs a gloss is the wrong name.
+   */
+  choices: { key: string; label: string }[];
+  onStart: (key: string) => void;
+  /** Some door is working: no other one may be started over it. */
   busy: boolean;
-  label: string;
+  /** What this door is doing, if it is the one working. Null otherwise. */
+  status: string | null;
+  /** What went wrong here, if anything did. */
+  error: string | null;
   lowercase?: boolean;
-  /**
-   * Names the primary action where "build me a round" is too vague to pick
-   * by — which is any door offering more than one. Only while idle: once a
-   * sitting is being read, the shared progress label says the useful thing.
-   */
-  submitLabel?: string;
-  /** One line under the primary saying what it will actually play. */
-  submitHint?: string;
-  /**
-   * Further ways through the same door, after the primary. The Last.fm one
-   * runs three difficulties off one username, and a door per difficulty
-   * would have meant asking for that username three times.
-   */
-  alternates?: { label: string; hint?: string; onSubmit: () => void }[];
 }) {
+  /*
+   * Picking is not starting.
+   *
+   * Every box used to fire its round on the first click, which made the
+   * three of them three buttons that looked like options — no way to see
+   * what you had chosen, no way to change your mind, and a download
+   * started by a click meant as a read. So a click marks the box instead,
+   * and one button below commits it.
+   */
+  const [picked, setPicked] = useState<string | null>(null);
   const filled = value.trim().length > 0;
-  const primary = busy ? label : (submitLabel ?? label);
+  const ready = filled && picked !== null && !busy;
 
   return (
     <section
@@ -812,16 +799,18 @@ function Door({
       </div>
 
       <h2 className="type-eyebrow mt-8 text-paper">{title}</h2>
-      <p className="type-body mt-3 flex-1 text-sm leading-relaxed text-paper-faint">
-        {blurb}
-      </p>
+      {/* Takes the slack, so a blurb that wraps to two lines in one column
+          does not push that column's field and boxes out of line with the
+          other two — the three sets of controls sit level whatever the
+          prose above them does. */}
+      <p className="type-body mt-3 flex-1 text-sm leading-relaxed text-paper-faint">{blurb}</p>
 
       <input
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && filled && !busy) onSubmit();
+          if (event.key === "Enter" && ready) onStart(picked);
         }}
         placeholder={placeholder}
         disabled={busy}
@@ -833,80 +822,65 @@ function Door({
       />
 
       {/*
-        One box per way through, stacked, rather than a row of bare words.
+        The readings, one compact box each, directly under the field they
+        read. A chosen one is filled in flame with ink on top — the move
+        the rest of the app already makes for something settled, in
+        `ChoiceField` and in a text selection — so "which one did I pick"
+        is answerable across the room rather than by reading three borders.
 
-        The first version set them as plain text — the primary in the
-        accent, the rest underlined — and a reader could not tell they were
-        buttons at all. Somebody looking for "records I know" reported not
-        being able to press it, took the underlined word beside it for the
-        mode he wanted, and played the wrong difficulty without ever
-        knowing there had been a choice. Boxes say "press me" without
-        having to be told, and stacking them full width makes the target
-        the whole row rather than a few characters.
-
-        Each carries a line saying what it actually does, because the names
-        alone are the thing that misled: "one step out" from what is only
-        obvious once you already know.
+        The button below commits whichever is marked, and is dead until one
+        is.
       */}
       <div className="mt-6 flex flex-col gap-2">
-        {[
-          { label: primary, hint: submitHint, onSubmit, lead: true },
-          ...(alternates ?? []).map((choice) => ({ ...choice, lead: false })),
-        ].map((choice) => {
-          const lead = choice.lead && filled && !busy;
+        {choices.map((choice) => {
+          const chosen = picked === choice.key;
 
           return (
             <button
-              key={choice.label}
+              key={choice.key}
               type="button"
-              onClick={choice.onSubmit}
-              disabled={busy || !filled}
-              /*
-                Hover fills the box in flame rather than nudging its edges.
-
-                The accent border alone was the first attempt and it was too
-                quiet — one colour shift on a dark ground, on a screen whose
-                whole purpose is these controls. Filling it is the move the
-                rest of the app already makes when something is settled: a
-                solved answer in `ChoiceField` is flame with ink on top, and
-                so is a text selection. Reusing that reads as "this is the
-                one" without needing to be learned.
-
-                Flame rather than the door's own accent, so the answer to
-                "what am I about to press" looks the same in all three
-                columns. The accent still marks the primary at rest, which
-                is a different question.
-
-                Classes, not the inline style this used to carry: an inline
-                border colour beats every hover rule, so the box could never
-                have changed under the cursor.
-              */
-              className={`group/act flex w-full items-center justify-between gap-3 border px-4 py-3 text-left transition-colors duration-150 enabled:hover:border-flame enabled:hover:bg-flame disabled:opacity-40 ${
-                lead ? "border-[var(--accent)]" : "border-ink-edge"
+              aria-pressed={chosen}
+              onClick={() => setPicked(choice.key)}
+              disabled={busy}
+              className={`type-eyebrow w-full border px-4 py-2.5 text-left text-xs transition-colors duration-150 disabled:opacity-40 ${
+                chosen
+                  ? "border-flame bg-flame text-ink"
+                  : "border-ink-edge text-paper enabled:hover:border-flame"
               }`}
             >
-              <span className="min-w-0">
-                <span className="type-eyebrow block text-xs text-paper transition-colors group-hover/act:text-ink">
-                  {choice.label}
-                </span>
-                {choice.hint && (
-                  <span className="type-body mt-1 block text-xs text-paper-faint transition-colors group-hover/act:text-ink/75">
-                    {choice.hint}
-                  </span>
-                )}
-              </span>
-              <span
-                aria-hidden
-                className={`type-eyebrow shrink-0 text-xs transition-all duration-150 group-hover/act:translate-x-1 group-hover/act:text-ink ${
-                  lead ? "text-[var(--accent)]" : ""
-                }`}
-              >
-                &rarr;
-              </span>
+              {choice.label}
             </button>
           );
         })}
       </div>
+
+      <button
+        type="button"
+        onClick={() => picked && onStart(picked)}
+        disabled={!ready}
+        /*
+          Dead until there is something to start: a field with something in
+          it and a reading chosen. Saying so by going flat and unreachable
+          is quieter than an explanation of what is missing, and the two
+          things missing are both on screen directly above it.
+
+          Paper rather than the door's own accent, and rather than the flame
+          the marked box carries: the choice above and the commit below must
+          not look like the same control twice, and on the third door — whose
+          accent is flame — they would have been exactly that.
+        */
+        className={`type-eyebrow mt-3 w-full px-4 py-3 text-center text-xs transition-colors duration-150 ${
+          ready
+            ? "bg-paper text-ink hover:bg-flame"
+            : "cursor-not-allowed border border-ink-edge text-paper-faint"
+        }`}
+      >
+        {status ?? "Start"}
+      </button>
+
+      {error && (
+        <p className="type-body mt-3 text-xs leading-relaxed text-flame">{error}</p>
+      )}
     </section>
   );
 }
