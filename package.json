@@ -15,7 +15,8 @@
     "backfill-soloist": "node scripts/backfill-soloist.mjs",
     "cut-solos": "node scripts/cut-solo-clips.mjs",
     "split-stems": "node scripts/split-stems.mjs",
-    "rejudge-stems": "node scripts/rejudge-stems.mjs"
+    "rejudge-stems": "node scripts/rejudge-stems.mjs",
+    "check-library": "node scripts/check-library.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.63",
