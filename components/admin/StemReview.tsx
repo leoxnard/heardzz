@@ -213,13 +213,20 @@ function StemRow({
   const [error, setError] = useState<string | null>(null);
 
   /*
-   * Where this stem starts. Held locally while it is being dragged so the
-   * waveform follows the pointer, and only sent when the drag ends — every
-   * intermediate pixel would otherwise be a write and a re-judgement.
+   * Where this stem starts, held here rather than read back off the record.
+   *
+   * It used to show the stored value except while a write was in flight,
+   * and moved by writing on every pointer event. Both halves of that were
+   * wrong: dragging fired a write and a re-judgement per pixel, and the
+   * picture flipped between the pointer and whatever the server had last
+   * confirmed — which is a marker that shakes and lags under the hand.
+   *
+   * So the drag is local and free, and the write happens once, when it ends.
+   * The row is keyed on the cut and the stem, so switching either remounts
+   * it and this starts from the record again.
    */
   const stored = typeof variant.leadIn === "number" ? variant.leadIn : leadIn;
-  const [marker, setMarker] = useState(stored);
-  const shown = busy ? marker : stored;
+  const [shown, setShown] = useState(stored);
 
   const label = STEMS.find((stem) => stem.id === id)?.label ?? id;
 
@@ -329,12 +336,15 @@ function StemRow({
       <div className="mt-3">
         <Waveform
           buffer={audio.buffer}
+          height={56}
           marker={shown}
-          onMarkerChange={(seconds) => {
-            setMarker(seconds);
-            void patch({ leadIn: seconds });
-          }}
-          playhead={audio.isPlaying ? shown + audio.progress * ((audio.buffer?.duration ?? shown) - shown) : null}
+          onMarkerChange={setShown}
+          onCommit={(seconds) => void patch({ leadIn: seconds })}
+          playhead={
+            audio.isPlaying
+              ? shown + audio.progress * ((audio.buffer?.duration ?? shown) - shown)
+              : null
+          }
         />
         <p className="type-data mt-1 text-xs text-paper-faint">
           {t("stemReview.startsAt", { at: shown.toFixed(2) })}

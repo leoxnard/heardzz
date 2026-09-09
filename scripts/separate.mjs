@@ -313,6 +313,12 @@ export function stemIsUsable({ openLevel, relativeLevel, onsetPeak, onsetRelativ
  * — Along Came Betty, and half a dozen others. The answer is not to refuse
  * the stem. It is to start it where it starts.
  *
+ * Always at or after the cut's own marker, never before it. The marker is
+ * where somebody decided the round begins, and a stem that opened earlier
+ * would deal audio the full mix never plays — the same tune answered from
+ * two different places depending on which layer you picked. Silence only
+ * ever pushes a stem later.
+ *
  * Measured against the stem's own peak rather than an absolute floor. An
  * absolute one cannot work here: it has to sit low enough for a hushed
  * ballad entry and that is also where separation residue lives, so −40 dB
@@ -335,6 +341,18 @@ export async function onsetOffset(file, from, duration) {
 
   const room = Math.max(0, (duration ?? Infinity) - from - KEEP_SECONDS);
   if (room === 0) return 0;
+
+  /*
+   * Nothing to trim if the round's own opening already sounds — and that is
+   * asked over the same half second the verdict is reached over, not by
+   * whether ffmpeg calls the instant of the marker silent. A horn decays
+   * below any useful threshold between notes, so a detector that only
+   * looked at the marker pushed St. Thomas from 0.64 to 1.36 on a gap in a
+   * phrase it was already playing. The marker is the answer unless the
+   * opening is genuinely empty.
+   */
+  const opening = await peakInWindow(file, from, ONSET_WINDOW);
+  if (opening !== null && opening > peak - ONSET_BELOW_PEAK) return 0;
 
   try {
     const { stderr } = await run(

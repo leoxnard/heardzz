@@ -25,11 +25,29 @@ interface WaveformProps {
   /** Seconds into the clip where the solo starts. */
   marker: number;
   onMarkerChange: (seconds: number) => void;
+  /**
+   * Called once when a drag ends, with where it ended.
+   *
+   * The editor's marker is local state and costs nothing to move, but a
+   * stem's is a write and a re-judgement — so the two want different
+   * moments. Dragging reports continuously through `onMarkerChange` so the
+   * picture follows the pointer; this is where anything expensive goes.
+   */
+  onCommit?: (seconds: number) => void;
   /** Seconds into the clip currently sounding, or null. */
   playhead: number | null;
+  /**
+   * Pixels tall. The full-height one is a working surface — an entry point
+   * placed to a tenth of a second against the shape of the music. A stem's
+   * sits under a row of controls with two more below it, and there it only
+   * has to show where the part comes in.
+   */
+  height?: number;
 }
 
-export function Waveform({ buffer, marker, onMarkerChange, playhead }: WaveformProps) {
+export function Waveform({
+  buffer, marker, onMarkerChange, onCommit, playhead, height = HEIGHT,
+}: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(720);
@@ -72,25 +90,25 @@ export function Waveform({ buffer, marker, onMarkerChange, playhead }: WaveformP
 
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr;
-    canvas.height = HEIGHT * dpr;
+    canvas.height = height * dpr;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.scale(dpr, dpr);
 
     ctx.fillStyle = INK_RAISED;
-    ctx.fillRect(0, 0, width, HEIGHT);
+    ctx.fillRect(0, 0, width, height);
 
     const markerX = (marker / buffer.duration) * width;
 
     // Pre-roll sits behind a darker ground so it reads as "not in play".
     ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(0, 0, markerX, HEIGHT);
+    ctx.fillRect(0, 0, markerX, height);
 
     if (peaks) {
-      const mid = HEIGHT / 2;
+      const mid = height / 2;
       for (let i = 0; i < peaks.length; i++) {
         const x = i * COLUMN_WIDTH;
-        const amplitude = Math.max(1, peaks[i] * (HEIGHT / 2) * 0.92);
+        const amplitude = Math.max(1, peaks[i] * (height / 2) * 0.92);
         ctx.fillStyle = x < markerX ? PAPER_DIM : PAPER;
         ctx.globalAlpha = x < markerX ? 0.35 : 0.9;
         ctx.fillRect(x, mid - amplitude, COLUMN_WIDTH - 1, amplitude * 2);
@@ -102,7 +120,7 @@ export function Waveform({ buffer, marker, onMarkerChange, playhead }: WaveformP
       const x = (playhead / buffer.duration) * width;
       ctx.fillStyle = FLAME;
       ctx.globalAlpha = 0.25;
-      ctx.fillRect(markerX, 0, Math.max(0, x - markerX), HEIGHT);
+      ctx.fillRect(markerX, 0, Math.max(0, x - markerX), height);
       ctx.globalAlpha = 1;
     }
 
@@ -110,7 +128,7 @@ export function Waveform({ buffer, marker, onMarkerChange, playhead }: WaveformP
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(markerX, 0);
-    ctx.lineTo(markerX, HEIGHT);
+    ctx.lineTo(markerX, height);
     ctx.stroke();
 
     ctx.fillStyle = FLAME;
@@ -118,8 +136,8 @@ export function Waveform({ buffer, marker, onMarkerChange, playhead }: WaveformP
 
     ctx.strokeStyle = INK_EDGE;
     ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, 0.5, width - 1, HEIGHT - 1);
-  }, [buffer, peaks, width, marker, playhead]);
+    ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+  }, [buffer, peaks, width, marker, playhead, height]);
 
   const setFromEvent = useCallback(
     (clientX: number) => {
@@ -135,21 +153,33 @@ export function Waveform({ buffer, marker, onMarkerChange, playhead }: WaveformP
   useEffect(() => {
     if (!dragging) return;
     const move = (event: PointerEvent) => setFromEvent(event.clientX);
-    const up = () => setDragging(false);
+    const up = (event: PointerEvent) => {
+      setDragging(false);
+      // Where it ended, from the event rather than from `marker` — the last
+      // move and this are the same gesture and props may not have caught up.
+      const canvas = canvasRef.current;
+      if (!canvas || !buffer || !onCommit) return;
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+      const at = Number((ratio * buffer.duration).toFixed(3));
+      // A pointerup without usable coordinates would otherwise commit NaN
+      // over a perfectly good marker.
+      onCommit(Number.isFinite(at) ? at : marker);
+    };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     return () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
-  }, [dragging, setFromEvent]);
+  }, [dragging, setFromEvent, buffer, onCommit, marker]);
 
   return (
     <div ref={wrapRef} className="w-full">
       {buffer ? (
         <canvas
           ref={canvasRef}
-          style={{ width: "100%", height: HEIGHT, cursor: "ew-resize", touchAction: "none" }}
+          style={{ width: "100%", height, cursor: "ew-resize", touchAction: "none" }}
           onPointerDown={(event) => {
             setDragging(true);
             setFromEvent(event.clientX);
@@ -158,7 +188,7 @@ export function Waveform({ buffer, marker, onMarkerChange, playhead }: WaveformP
       ) : (
         <div
           className="type-eyebrow flex items-center justify-center border border-ink-edge bg-ink-raised text-paper-faint"
-          style={{ height: HEIGHT }}
+          style={{ height }}
         >
           loading clip
         </div>
@@ -170,11 +200,14 @@ export function Waveform({ buffer, marker, onMarkerChange, playhead }: WaveformP
           <button
             key={delta}
             type="button"
-            onClick={() =>
-              onMarkerChange(
-                Number(Math.max(0, Math.min(buffer?.duration ?? 0, marker + delta)).toFixed(3)),
-              )
-            }
+            onClick={() => {
+              const next = Number(
+                Math.max(0, Math.min(buffer?.duration ?? 0, marker + delta)).toFixed(3),
+              );
+              onMarkerChange(next);
+              // A nudge is its own whole gesture, so it commits immediately.
+              onCommit?.(next);
+            }}
             disabled={!buffer}
             className="type-data border border-ink-edge px-3 py-1 text-xs text-paper-dim transition-colors hover:border-flame hover:text-flame disabled:opacity-30"
           >

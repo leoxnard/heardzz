@@ -64,7 +64,14 @@ export async function PATCH(request: Request) {
    */
   if (typeof body.leadIn === "number" && Number.isFinite(body.leadIn)) {
     const clip = body.cut === "solo" ? solo.soloClip?.audio : solo.audio;
-    const start = Math.max(0, Number(body.leadIn.toFixed(3)));
+    /*
+     * Never before the cut's own marker. That marker is where somebody
+     * decided the round begins, and a stem starting earlier would deal
+     * audio the full mix never plays — one tune answered from two places
+     * depending on which layer was picked. Later is the whole point.
+     */
+    const floor = body.cut === "solo" ? (solo.soloClip?.leadIn ?? 0) : solo.leadIn;
+    const start = Math.max(floor, Number(body.leadIn.toFixed(3)));
     variant.leadIn = start;
 
     if (clip) {
