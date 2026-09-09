@@ -12,7 +12,9 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, rm, mkdir, readFile, readdir, stat, writeFile, copyFile } from "node:fs/promises";
+import {
+  mkdtemp, rm, mkdir, readFile, readdir, rename, stat, writeFile, copyFile,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -796,7 +798,57 @@ export async function readLibrary() {
 
 export async function writeLibrary(library) {
   await mkdir(path.dirname(LIBRARY_PATH), { recursive: true });
-  await writeFile(LIBRARY_PATH, `${JSON.stringify(library, null, 2)}\n`, "utf8");
+  /*
+   * Through a temporary file, so a reader never sees half a library. The
+   * write is not atomic on its own — a crash or a concurrent read partway
+   * through leaves or returns a truncated file, and this one file is the
+   * whole thing.
+   */
+  const temporary = `${LIBRARY_PATH}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(library, null, 2)}\n`, "utf8");
+  await rename(temporary, LIBRARY_PATH);
+}
+
+/* ------------------------------------------------------------------
+   One writer at a time.
+
+   Every route that changes anything does the same three things: read the
+   library, change one thing in it, write it back. Two of those overlapping
+   means the second read happens before the first write, and the first
+   change is simply gone — approving a stem and then nudging its marker a
+   moment later lost the approval, with nothing to show that it had.
+
+   Requests to one Next server share a process, so a promise chain is enough
+   to order them: each mutation waits for the one before it, and does its own
+   read inside its turn rather than before it. This does not defend against a
+   second process — the CLI scripts write the same file — but nothing runs
+   those against a live server, and the temporary-file swap above keeps even
+   that from being read half-written.
+   ------------------------------------------------------------------ */
+
+let libraryQueue = Promise.resolve();
+
+/**
+ * Read the library, change it, and write it back, with nothing in between.
+ *
+ * `change` is handed the library and returns whatever the caller wants back;
+ * mutating the object it is given is the point. Returning `false` skips the
+ * write, for a change that turns out not to be one.
+ */
+export function mutateLibrary(change) {
+  const run = libraryQueue.then(async () => {
+    const library = await readLibrary();
+    const result = await change(library);
+    if (result !== false) await writeLibrary(library);
+    return result;
+  });
+  // The queue must survive a failed turn, or one bad request wedges every
+  // write after it.
+  libraryQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 /** Catalogue numbers run HZ-1501 upward, in the order clips were added. */
@@ -850,7 +902,12 @@ export function missingAudioTargets(solos) {
  * one upsert per solo.
  */
 export async function applyClipToLibrary(outputId, clip) {
-  const library = await readLibrary();
+  // `applyClip` answers `false` for "nothing matched", which is how
+  // `mutateLibrary` is told to skip the write. Callers want the count.
+  return (await mutateLibrary((library) => applyClip(library, outputId, clip))) || 0;
+}
+
+function applyClip(library, outputId, clip) {
   let touched = 0;
 
   for (const solo of library.solos) {
@@ -884,17 +941,17 @@ export async function applyClipToLibrary(outputId, clip) {
     }
   }
 
-  if (touched > 0) await writeLibrary(library);
-  return touched;
+  // Nothing matched, so nothing to write.
+  return touched > 0 ? touched : false;
 }
 
 export async function upsertSolo(solo) {
-  const library = await readLibrary();
-  const idx = library.solos.findIndex((s) => s.id === solo.id);
-  if (idx >= 0) library.solos[idx] = { ...library.solos[idx], ...solo };
-  else library.solos.push(solo);
-  await writeLibrary(library);
-  return solo;
+  return mutateLibrary((library) => {
+    const idx = library.solos.findIndex((s) => s.id === solo.id);
+    if (idx >= 0) library.solos[idx] = { ...library.solos[idx], ...solo };
+    else library.solos.push(solo);
+    return solo;
+  });
 }
 
 /**

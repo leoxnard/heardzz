@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
-import { readLibrary, writeLibrary } from "@/scripts/extract.mjs";
+import { mutateLibrary } from "@/scripts/extract.mjs";
 import { stemFilesFor } from "@/scripts/separate.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
 import { AUDIO_DIR } from "@/lib/paths";
@@ -25,14 +25,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "a valid action is required" }, { status: 400 });
   }
 
-  const library = await readLibrary();
-  const solos = library.solos as Solo[];
   const targets = new Set(ids);
 
   if (body.action === "delete") {
-    const removed = solos.filter((solo) => targets.has(solo.id));
-    const kept = solos.filter((solo) => !targets.has(solo.id));
-    await writeLibrary({ ...library, solos: kept });
+    const { removed, kept } = await mutateLibrary((library) => {
+      const gone = library.solos.filter((solo) => targets.has(solo.id));
+      const stays = library.solos.filter((solo) => !targets.has(solo.id));
+      library.solos = stays;
+      return { removed: gone, kept: stays };
+    });
 
     // Same orphan-only rule as the single-record delete: a clip can be
     // shared by more than one entry (several soloists off one head clip),
@@ -60,8 +61,16 @@ export async function POST(request: Request) {
           ? { disabled: true }
           : { disabled: false };
 
-  const updated = solos.map((solo) => (targets.has(solo.id) ? { ...solo, ...patch } : solo));
-  await writeLibrary({ ...library, solos: updated });
+  const touched = await mutateLibrary((library) => {
+    const out: Solo[] = [];
+    library.solos = library.solos.map((solo) => {
+      if (!targets.has(solo.id)) return solo;
+      const next = { ...solo, ...patch };
+      out.push(next);
+      return next;
+    });
+    return out;
+  });
 
-  return NextResponse.json({ solos: updated.filter((solo) => targets.has(solo.id)) });
+  return NextResponse.json({ solos: touched });
 }

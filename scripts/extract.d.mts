@@ -1,6 +1,8 @@
 /** Types for the extraction pipeline, which stays plain ESM so the CLI can
  *  run it directly with node and the admin routes can import the same code. */
 
+import type { Solo } from "@/lib/types";
+
 export const PRE_ROLL: number;
 export const POST_ROLL: number;
 export const CLIP_LENGTH: number;
@@ -117,6 +119,17 @@ export function listSources(): Promise<
 
 export function readLibrary(): Promise<{ version: number; solos: unknown[] }>;
 export function writeLibrary(library: { version: number; solos: unknown[] }): Promise<void>;
+
+/**
+ * Read, change and write the library with nothing interleaved.
+ *
+ * Every route that changes anything reads, edits and writes back, and two of
+ * those overlapping loses the earlier change. This orders them.
+ * Returning `false` from `change` skips the write.
+ */
+export function mutateLibrary<T>(
+  change: (library: { version: number; solos: Solo[] }) => T | Promise<T>,
+): Promise<T>;
 export function nextCatalog(library: { solos: unknown[] }): string;
 export function upsertSolo<T>(solo: T): Promise<T>;
 

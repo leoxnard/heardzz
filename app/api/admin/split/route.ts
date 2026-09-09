@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
-import { readLibrary, writeLibrary } from "@/scripts/extract.mjs";
+import { mutateLibrary, readLibrary } from "@/scripts/extract.mjs";
 import { ensureSeparator, separateClip, separatorIsReady } from "@/scripts/separate.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
 import type { Solo, StemSet } from "@/lib/types";
@@ -99,8 +99,19 @@ export async function POST(request: Request) {
       previous: target.stems,
     });
 
-    target.apply(stems);
-    await writeLibrary({ ...library, solos });
+    /*
+     * Read again inside the write rather than reusing the copy the
+     * separation started from. A minute has passed and somebody may have
+     * approved a stem or fixed a title in it; only this cut's result is
+     * ours to put back.
+     */
+    await mutateLibrary((current) => {
+      const fresh = current.solos.find((entry) => entry.id === solo.id);
+      if (!fresh) return false;
+      if (target.cut === "head") fresh.stems = stems;
+      else if (fresh.soloClip) fresh.soloClip = { ...fresh.soloClip, stems };
+      Object.assign(solo, fresh);
+    });
 
     return NextResponse.json({
       done: pending.length === 1,

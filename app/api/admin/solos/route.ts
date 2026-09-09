@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
-import { readLibrary, writeLibrary } from "@/scripts/extract.mjs";
+import { mutateLibrary, readLibrary } from "@/scripts/extract.mjs";
 import { splitShapeFor, stemFilesFor } from "@/scripts/separate.mjs";
 import { requireAdmin } from "@/lib/admin-guard";
 import { AUDIO_DIR } from "@/lib/paths";
@@ -45,11 +45,11 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
-  const library = await readLibrary();
-  const solos = library.solos as Solo[];
+  const outcome = await mutateLibrary((library) => {
+  const solos = library.solos;
   const index = solos.findIndex((solo) => solo.id === body.id);
   if (index === -1) {
-    return NextResponse.json({ error: `No solo with id ${body.id}` }, { status: 404 });
+    return { error: `No solo with id ${body.id}`, status: 404 } as const;
   }
 
   const current = solos[index];
@@ -172,8 +172,13 @@ export async function PATCH(request: Request) {
     if (shapeOf(sibling) !== was) delete sibling.stems;
   }
 
-  await writeLibrary({ ...library, solos });
-  return NextResponse.json(updated);
+  return { updated } as const;
+  });
+
+  if ("error" in outcome) {
+    return NextResponse.json({ error: outcome.error }, { status: outcome.status });
+  }
+  return NextResponse.json(outcome.updated);
 }
 
 export async function DELETE(request: Request) {
@@ -183,18 +188,20 @@ export async function DELETE(request: Request) {
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
 
-  const library = await readLibrary();
-  const solos = library.solos as Solo[];
-  const target = solos.find((solo) => solo.id === id);
+  const target = await mutateLibrary((library) => {
+    const found = library.solos.find((solo) => solo.id === id);
+    if (!found) return false;
+    library.solos = library.solos.filter((solo) => solo.id !== id);
+    return found;
+  });
   if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  await writeLibrary({ ...library, solos: solos.filter((solo) => solo.id !== id) });
-
+  const solos = (await readLibrary()).solos as Solo[];
   // Another entry may point at the same clip — a record with three soloists
   // shares one head clip — so only an orphan is removed. Clips live in the
   // data directory, and `audio` is the URL they are served under, so the file
   // has to be read back off the path rather than joined onto it.
-  const kept = solos.filter((solo) => solo.id !== id);
+  const kept = solos;
   for (const audio of [target.audio, target.soloClip?.audio]) {
     if (!audio) continue;
     if (kept.some((solo) => solo.audio === audio || solo.soloClip?.audio === audio)) continue;
