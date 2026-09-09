@@ -10,6 +10,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
    pre-roll — audio that exists in the file but is never played in a round.
    ------------------------------------------------------------------ */
 
+/**
+ * Where in the clip a pointer at `clientX` is, or `null` when it cannot say.
+ *
+ * The null is not defensive padding. A canvas that has not been laid out —
+ * a hidden tab, a pane that is not being drawn — measures zero wide, and
+ * dividing by that gives an offset of NaN which travels all the way into the
+ * gain ramp before anything complains.
+ */
+function secondsAt(canvas: HTMLCanvasElement, clientX: number, buffer: AudioBuffer) {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0) return null;
+  const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  const at = Number((ratio * buffer.duration).toFixed(3));
+  return Number.isFinite(at) ? at : null;
+}
+
 const COLUMN_WIDTH = 2;
 const HEIGHT = 160;
 
@@ -148,9 +164,8 @@ export function Waveform({
     (clientX: number) => {
       const canvas = canvasRef.current;
       if (!canvas || !buffer) return;
-      const rect = canvas.getBoundingClientRect();
-      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-      onMarkerChange(Number((ratio * buffer.duration).toFixed(3)));
+      const at = secondsAt(canvas, clientX, buffer);
+      if (at !== null) onMarkerChange(at);
     },
     [buffer, onMarkerChange],
   );
@@ -164,12 +179,9 @@ export function Waveform({
       // move and this are the same gesture and props may not have caught up.
       const canvas = canvasRef.current;
       if (!canvas || !buffer || !onCommit) return;
-      const rect = canvas.getBoundingClientRect();
-      const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-      const at = Number((ratio * buffer.duration).toFixed(3));
       // A pointerup without usable coordinates would otherwise commit NaN
       // over a perfectly good marker.
-      onCommit(Number.isFinite(at) ? at : marker);
+      onCommit(secondsAt(canvas, event.clientX, buffer) ?? marker);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -191,9 +203,7 @@ export function Waveform({
           }}
           onPointerMove={(event) => {
             if (!onAim || !buffer) return;
-            const rect = event.currentTarget.getBoundingClientRect();
-            const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-            onAim(Number((ratio * buffer.duration).toFixed(3)));
+            onAim(secondsAt(event.currentTarget, event.clientX, buffer));
           }}
           onPointerLeave={() => onAim?.(null)}
         />

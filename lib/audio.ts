@@ -339,6 +339,13 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
   const play = useCallback(
     (offsetSeconds: number, durationSeconds: number) => {
       if (!buffer) return;
+      /*
+       * A non-finite offset or length reaches the gain ramp as NaN, and the
+       * Web Audio API answers that with a thrown TypeError from inside a
+       * promise — which surfaces as a player that silently does nothing.
+       * Cheaper to refuse it here than to find it there.
+       */
+      if (!Number.isFinite(offsetSeconds) || !Number.isFinite(durationSeconds)) return;
       // Silence whatever else was sounding first. One context, one pair of
       // speakers: two players at once is two players at once.
       if (sounding && sounding.owner !== ownerRef.current) sounding.stop();

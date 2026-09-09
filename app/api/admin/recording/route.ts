@@ -36,8 +36,8 @@ export const dynamic = "force-dynamic";
  */
 const SHARED = [
   "artist", "song", "album", "year", "note", "personnel", "melody",
-  "youtubeId", "audio", "leadIn", "clipDuration", "soloStart", "stems",
-  "disabled",
+  "youtubeId", "audio", "leadIn", "clipDuration", "soloStart", "disabled",
+  "discogsReleaseId",
 ] as const;
 
 /** And what belongs to the entry: id, catalog, the soloist, and their cut. */
@@ -73,13 +73,6 @@ export async function PATCH(request: Request) {
       if (key in body) Object.assign(shared, { [key]: body[key] });
     }
 
-    /*
-     * The stems are never taken from the client. They are written by the
-     * split and ruled on in the review block, and a form that posted the
-     * copy it opened with would undo an approval made while it was open.
-     */
-    delete shared.stems;
-
     const own: Partial<Solo> = {};
     for (const key of OWN) {
       if (key in incoming) Object.assign(own, { [key]: incoming[key] });
@@ -94,9 +87,27 @@ export async function PATCH(request: Request) {
       shared.leadIn = Number(clamped.toFixed(3));
     }
 
-    const merged: Solo = { ...current, ...shared, ...own, soloStart, stems: current.stems };
+    /*
+     * The stems are never taken from the client. They are written by the
+     * split and ruled on in the review block, and a form posting the copy it
+     * opened with would undo an approval made while it was open — which is
+     * exactly what used to happen. Neither `SHARED` nor `OWN` names them, and
+     * the two places they could still ride in on are pinned here.
+     */
+    const merged: Solo = {
+      ...current,
+      ...shared,
+      ...own,
+      soloStart,
+      stems: current.stems,
+      sources: current.sources,
+    };
     if (own.soloClip) {
-      merged.soloClip = { ...own.soloClip, stems: current.soloClip?.stems };
+      merged.soloClip = {
+        ...own.soloClip,
+        stems: current.soloClip?.stems,
+        sources: current.soloClip?.sources,
+      };
     }
 
     const updated: Solo = {

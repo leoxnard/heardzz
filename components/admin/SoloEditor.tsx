@@ -96,7 +96,9 @@ export function SoloEditor({ siblings, onRemark, onSaved, onDeleted, known }: So
   const shared = draft[0];
   const entry = draft.find((solo) => solo.id === tab) ?? null;
 
-  const dirty = comparable(draft) !== comparable(ordered);
+  /* Recomputed only when one of them moves: it is a stringify of the whole
+     recording and the parent re-renders on every keystroke elsewhere. */
+  const dirty = useMemo(() => comparable(draft) !== comparable(ordered), [draft, ordered]);
 
   function editShared<K extends keyof Solo>(key: K, value: Solo[K]) {
     setDraft((current) => current.map((solo) => ({ ...solo, [key]: value })));
@@ -237,6 +239,10 @@ export function SoloEditor({ siblings, onRemark, onSaved, onDeleted, known }: So
     );
     onSaved(written);
   }, [onSaved]);
+
+  // Only while the last entry is being deleted and the screen has not yet
+  // been told to close; every read below assumes a recording is here.
+  if (!shared) return null;
 
   return (
     <div>
