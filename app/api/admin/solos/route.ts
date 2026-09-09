@@ -46,7 +46,18 @@ export async function PATCH(request: Request) {
     body.leadIn = Number(clamped.toFixed(3));
   }
 
+  /*
+   * The stems are not the editor's to send. They are written by the split
+   * and ruled on in the review block beside it, and the form holds whatever
+   * they were when the record was opened — so a save made after approving a
+   * stem was posting the pre-approval copy back over it, and the approval
+   * vanished on the next render. Nothing here reads them from the client.
+   */
+  delete body.stems;
   const merged = { ...current, ...body };
+  if (body.soloClip) {
+    merged.soloClip = { ...body.soloClip, stems: current.soloClip?.stems };
+  }
 
   /*
    * Moving an entry point moves the window the stems were judged over, so

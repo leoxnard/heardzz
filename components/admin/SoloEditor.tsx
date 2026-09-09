@@ -64,6 +64,23 @@ export function SoloEditor({
   const [busy, setBusy] = useState(false);
   /** Bumped when a save invalidates the stems, to set the split going. */
   const [resplit, setResplit] = useState(0);
+
+  /*
+   * Whether anything here differs from what is stored.
+   *
+   * The stems are excluded because they are not this form's to hold: they
+   * are written by the split and ruled on in the review block, and counting
+   * them would make the save button light up because somebody approved a
+   * stem — an edit nobody made and a save that would do nothing.
+   */
+  const dirty = useMemo(() => {
+    const bare = (solo: Solo) => ({
+      ...solo,
+      stems: undefined,
+      soloClip: solo.soloClip ? { ...solo.soloClip, stems: undefined } : undefined,
+    });
+    return JSON.stringify(bare(draft)) !== JSON.stringify(bare(solo));
+  }, [draft, solo]);
   const [error, setError] = useState<string | null>(null);
   const [discogsLink, setDiscogsLink] = useState("");
   const [creditsBusy, setCreditsBusy] = useState(false);
@@ -345,13 +362,19 @@ export function SoloEditor({
       </div>
 
       <div className="mt-8 flex flex-wrap gap-3">
+        {/* Lit only when there is something to save. A button that is always
+            the loudest thing on the screen stops saying anything. */}
         <button
           type="button"
           onClick={() => save()}
-          disabled={busy}
-          className="type-eyebrow bg-flame px-5 py-3 text-ink transition-colors hover:bg-paper disabled:opacity-40"
+          disabled={busy || !dirty}
+          className={`type-eyebrow px-5 py-3 transition-colors ${
+            dirty
+              ? "bg-flame text-ink hover:bg-paper"
+              : "border border-ink-edge text-paper-faint"
+          } disabled:opacity-40`}
         >
-          {busy ? t("library.saving") : t("library.save")}
+          {busy ? t("library.saving") : dirty ? t("library.save") : t("library.saved")}
         </button>
         <button
           type="button"
@@ -410,7 +433,23 @@ export function SoloEditor({
         )}
       </section>
 
-      <StemReview solo={solo} onSaved={onSaved} resplit={resplit} />
+      {/* Approving a stem writes to the record, so the form has to take that
+          back — otherwise the next save posts a copy without it. Only the
+          stems are merged, so edits in progress here are not thrown away. */}
+      <StemReview
+        solo={solo}
+        resplit={resplit}
+        onSaved={(next) => {
+          setDraft((current) => ({
+            ...current,
+            stems: next.stems,
+            soloClip: current.soloClip
+              ? { ...current.soloClip, stems: next.soloClip?.stems }
+              : current.soloClip,
+          }));
+          onSaved(next);
+        }}
+      />
 
       <section className="mt-12 border-t border-ink-edge pt-8">
         <h3 className="type-eyebrow text-flame">{t("library.soloist")}</h3>

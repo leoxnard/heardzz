@@ -43,6 +43,17 @@ const SCHEDULE_LEAD = 0.005;
 let sharedContext: AudioContext | null = null;
 let wakeListenersAttached = false;
 
+/**
+ * Whatever is currently sounding, so starting something else can silence it.
+ *
+ * They share one context and one pair of speakers, so two players are two
+ * players at once — which in the library screen means auditioning the
+ * soloist against the bass and hearing neither. There is no case anywhere
+ * for a second thing playing over the first, so this is enforced here
+ * rather than left to each screen to remember.
+ */
+let sounding: { owner: object; stop: () => void } | null = null;
+
 /** The ring/silent switch is an iPhone and iPad part. iPadOS reports
  *  itself as a Mac, so touch points are what separate the two. */
 function hasSilentSwitch(): boolean {
@@ -195,6 +206,8 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
   const frameRef = useRef<number | null>(null);
   const spanRef = useRef<{ startedAt: number; duration: number } | null>(null);
   const playTokenRef = useRef(0);
+  /** Stable identity for this player, so the registry can tell it apart. */
+  const ownerRef = useRef({});
 
   const [status, setStatus] = useState<AudioStatus>("idle");
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
@@ -214,6 +227,7 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
   }, []);
 
   const stop = useCallback(() => {
+    if (sounding?.owner === ownerRef.current) sounding = null;
     if (frameRef.current !== null) {
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
@@ -273,7 +287,11 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
   const play = useCallback(
     (offsetSeconds: number, durationSeconds: number) => {
       if (!buffer) return;
+      // Silence whatever else was sounding first. One context, one pair of
+      // speakers: two players at once is two players at once.
+      if (sounding && sounding.owner !== ownerRef.current) sounding.stop();
       stop();
+      sounding = { owner: ownerRef.current, stop };
 
       const decoded = buffer;
       const token = playTokenRef.current;

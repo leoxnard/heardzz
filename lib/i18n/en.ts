@@ -244,6 +244,7 @@ export const en = {
       "Use this when the right moment is not inside the clip at all. It downloads the source again.",
     save: "Save",
     saving: "Saving",
+    saved: "Saved",
     delete: "Remove",
     deleteConfirm: "Remove {song} — {artist} from the library?",
     empty: "The library is empty. Run npm run seed, or add a record below.",
