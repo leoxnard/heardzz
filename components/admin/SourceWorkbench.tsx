@@ -260,7 +260,16 @@ export function SourceWorkbench({
     if (preloading) return;
 
     started.current = true;
-    void fetchSource(seed.target ?? seed.youtubeId ?? "");
+    /*
+     * A link, not the bare id. The id is what the suggestion or the record
+     * being marked again already knows, and it has to reach the server as a
+     * video rather than as eleven characters to search for — a search is a
+     * different upload every time YouTube shuffles its results, which is how
+     * one tune ended up marked against two different videos.
+     */
+    void fetchSource(
+      seed.target ?? (seed.youtubeId ? `https://www.youtube.com/watch?v=${seed.youtubeId}` : ""),
+    );
   }, [seed, preloaded, preloading, fetchSource, applySource]);
 
   /* ---------------- marks ---------------- */

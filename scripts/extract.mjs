@@ -123,12 +123,26 @@ function friendlyYtdlpFailure(target, error) {
   return reason || `Could not read "${target}"`;
 }
 
+/** What a YouTube video id looks like, and nothing else does. */
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
 /**
- * Resolve a search phrase or URL to a single video without downloading.
- * Doing this first means a bad match is caught before any bytes move.
+ * Resolve a search phrase, a link, or a bare video id to a single video
+ * without downloading. Doing this first means a bad match is caught before
+ * any bytes move.
+ *
+ * The id case is not a nicety. A search is a different video every time
+ * YouTube feels like it, so anything holding an id — a suggestion, a record
+ * being marked again — must resolve to *that* video and not to whatever a
+ * search for those eleven characters turns up today. Callers used to hand
+ * the id in as the phrase and got a different upload on the second try.
  */
 export async function resolveSource(target) {
-  const query = /^https?:\/\//.test(target) ? target : `ytsearch1:${target}`;
+  const query = /^https?:\/\//.test(target)
+    ? target
+    : VIDEO_ID.test(target.trim())
+      ? `https://www.youtube.com/watch?v=${target.trim()}`
+      : `ytsearch1:${target}`;
 
   let stdout;
   try {
