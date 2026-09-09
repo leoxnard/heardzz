@@ -128,8 +128,8 @@ const STEM_IDS: StemId[] = ["lead", "rhythm", "bass"];
 
 export const STEMS: Stem[] = [
   { id: "full", label: "The record", blurb: "As it was pressed" },
-  { id: "lead", label: "Only the soloist", blurb: "Whoever is out front, lifted out of the band" },
-  { id: "rhythm", label: "Only the rhythm section", blurb: "The band, with the lead voice gone" },
+  { id: "lead", label: "Only the melody", blurb: "Whoever has the tune, lifted out of the band" },
+  { id: "rhythm", label: "Only the accompaniment", blurb: "Everything else the record has, melody gone" },
   { id: "bass", label: "Only the bass", blurb: "The walk, on its own" },
 ];
 

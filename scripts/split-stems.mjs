@@ -18,7 +18,7 @@
 
 import { readLibrary, writeLibrary } from "./extract.mjs";
 import {
-  ensureSeparator, leadHeadsFor, rhythmHeadsFor, separateClip, separatorIsReady,
+  accompanimentHeadsFor, ensureSeparator, leadHeadsFor, separateClip, separatorIsReady,
 } from "./separate.mjs";
 
 const args = process.argv.slice(2);
@@ -116,7 +116,7 @@ if (plan) {
 
   for (const cut of cuts) {
     const lead = leadHeadsFor(shapeOf(cut));
-    const rhythm = rhythmHeadsFor(shapeOf(cut));
+    const rhythm = accompanimentHeadsFor(shapeOf(cut));
 
     const have = cut.previous;
     const matches =
@@ -126,7 +126,7 @@ if (plan) {
 
     console.log(
       `${matches ? "  " : "→ "}${cut.label.padEnd(46)} ` +
-        `lead ${label(lead).padEnd(14)} rhythm ${label(rhythm).padEnd(24)}` +
+        `melody ${label(lead).padEnd(12)} accompaniment ${label(rhythm).padEnd(30)}` +
         `${have ? (matches ? "on disk" : "needs splitting") : "not split yet"}`,
     );
   }

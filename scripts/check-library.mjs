@@ -14,7 +14,7 @@
 import { statSync } from "node:fs";
 import path from "node:path";
 import { AUDIO_DIR, readLibrary } from "./extract.mjs";
-import { RHYTHM_HEADS, leadHeadsFor, rhythmHeadsFor } from "./separate.mjs";
+import { RHYTHM_HEADS, headsInCredits, leadHeadsFor } from "./separate.mjs";
 
 const library = await readLibrary();
 
@@ -68,7 +68,12 @@ total += report(
   "Credited, but the rhythm section comes out short. Check for a missing name",
   [...recordings.values()]
     .filter(([solo]) => (solo.personnel ?? []).filter((c) => c.role).length > 0)
-    .map(([solo]) => ({ solo, heads: rhythmHeadsFor(shapeOf(solo, "head")) }))
+    // The rhythm section as the credits describe it, which is the question
+    // here — not the accompaniment mix, which now holds the horns as well.
+    .map(([solo]) => {
+      const present = headsInCredits(solo.personnel);
+      return { solo, heads: RHYTHM_HEADS.filter((head) => present.has(head)) };
+    })
     .filter(({ heads }) => !heads.includes("bass") || !heads.includes("drums"))
     .map(({ solo, heads }) =>
       `${solo.artist} — ${solo.song}`.padEnd(44) +
@@ -100,14 +105,13 @@ total += report(
  * cut, so it is worth seeing rather than discovering.
  */
 total += report(
-  "The theme is on a rhythm instrument, so the rhythm section plays without it",
+  "The theme is on a rhythm instrument, so the accompaniment plays without it",
   [...recordings.values()]
     .map(([solo]) => ({ solo, lead: leadHeadsFor(shapeOf(solo, "head")) }))
     .filter(({ lead }) => lead.some((head) => RHYTHM_HEADS.includes(head)))
     .map(({ solo, lead }) =>
       `${solo.artist} — ${solo.song}`.padEnd(44) +
-      `lead ${lead.join("+")}`.padEnd(16) +
-      `rhythm ${rhythmHeadsFor(shapeOf(solo, "head")).join("+") || "—"}`),
+      `melody ${lead.join("+")}`),
 );
 
 /*

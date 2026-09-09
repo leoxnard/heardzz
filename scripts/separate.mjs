@@ -1,15 +1,18 @@
 /* ------------------------------------------------------------------
    Pulling a recording apart.
 
-   A clip is a mix. This takes one and produces three more: the lead voice on
-   its own, everything except the lead voice, and the bass. On a Blue Note
-   quintet those are the horn, the rhythm section, and the walk — three quite
-   different games. One asks you to name a player by their sound alone, one
-   to name a record with its most obvious clue removed, and one to do it on
-   four notes a bar.
+   A clip is a mix. This takes one and produces three more: the melody on its
+   own, the accompaniment — everything the record has except the melody —
+   and the bass. On a Blue Note quintet those are the horn, the band behind
+   it, and the walk: three quite different games. One asks you to name a
+   player by their sound alone, one to name a record with its most obvious
+   clue removed, and one to do it on four notes a bar.
 
-   Which head holds the lead voice depends on who is soloing, so it is not
-   fixed: see `leadStemFor` below.
+   The pair is a subtraction and the two halves are exactly complementary.
+   Which heads the melody is made of depends on who is playing it — the
+   soloist on a solo cut, whoever states the theme on the opening — so it is
+   not fixed: see `leadStemFor` and `melodyHeadsFor` below. Whatever is left
+   is the accompaniment, horns included when the piano has the tune.
 
    Nothing here runs while anybody is playing. These are files, cut once and
    served like any other clip, and the game only ever picks a different URL.
@@ -512,22 +515,20 @@ async function encodeStem(inputs, output, { lift = 0 } = {}) {
    knows the answer: `soloistRole` is settled against the credits on every
    save, so the instrument follows the name.
 
-   This also decides what `rhythm` means. "The band without the soloist" is
-   only the same thing as "everything but the horns" on a record where the
-   soloist is a horn player — on Waltz For Debby the soloist is the piano,
-   and subtracting the horns from a piano trio subtracts nothing at all.
+   This also decides what the accompaniment is, since it is the rest of the
+   band by definition. On Waltz For Debby the soloist is the piano, so the
+   accompaniment is bass and drums; on Moanin' the theme is the piano, so it
+   is the horns, bass and drums, and the piano is gone from it.
    ------------------------------------------------------------------ */
 
 export const STEM_HEADS = ["other", "piano", "guitar", "bass", "drums", "vocals"];
 
 /**
- * The rhythm section, and nothing else.
+ * The four instruments a rhythm section is made of.
  *
- * `rhythm` used to be "every head except the lead", which let a horn into it
- * whenever the lead was something other than the horns — Giant Steps played
- * a tenor saxophone in "Only the rhythm section" that way. But a rhythm
- * section is not defined by subtraction. It is four instruments, and on any
- * given record it is whichever of them are in the band.
+ * Kept only for reports that ask "does this band have a rhythm section" —
+ * it is no longer what the accompaniment variant is built from. See
+ * `accompanimentHeadsFor` for why that changed.
  */
 export const RHYTHM_HEADS = ["piano", "guitar", "bass", "drums"];
 
@@ -696,17 +697,33 @@ export function leadHeadsFor({ cut, role, personnel, melody, artist }) {
 }
 
 /**
- * The rhythm section this cut plays.
+ * The accompaniment: this record, less whoever has the tune.
  *
- * The four instruments a rhythm section is made of, intersected with the
- * band, less anybody out front — which is the only subtraction there is,
- * and it only ever removes a rhythm instrument. A horn stating the theme
- * takes nothing out of here, because horns were never in it.
+ * Defined by subtraction, and deliberately so. It was four fixed
+ * instruments — piano, guitar, bass, drums — which is what a rhythm section
+ * is, and that is the right answer to "who is the rhythm section" and the
+ * wrong answer to the question the game actually asks. On Moanin' the piano
+ * states the theme and the horns answer it; a rhythm section defined as
+ * those four instruments then plays the piano that just had the melody and
+ * drops the horns that were the accompaniment. Two things were wrong at
+ * once: the melody was audible in the layer it had been taken out of, and
+ * the band that was accompanying it was not.
+ *
+ * So the pair is now what its names say. Melody is the instrument or
+ * instruments named — the soloist on a solo cut, whoever states the theme on
+ * the opening — and accompaniment is everything else the record contains,
+ * horns included.
+ *
+ * The credits still decide what "contains" means, and that is not a
+ * leftover: a head with nobody behind it holds bleed rather than silence,
+ * and the loudest thing to bleed into it is usually whatever has the tune.
+ * Mixing it in would put a ghost of the melody back into the layer this
+ * exists to take it out of.
  */
-export function rhythmHeadsFor(args) {
+export function accompanimentHeadsFor(args) {
   const lead = leadHeadsFor(args);
   const present = headsInCredits(args.personnel);
-  return RHYTHM_HEADS.filter((head) => !lead.includes(head) && present.has(head));
+  return STEM_HEADS.filter((head) => !lead.includes(head) && present.has(head));
 }
 
 /**
@@ -783,7 +800,7 @@ export function stemFileName(clipId, id, leadHeads) {
  * spelling in the credits does not, and does not cost an hour of separating.
  */
 export function splitShapeFor(args) {
-  return `${leadHeadsFor(args).join("+")}|${rhythmHeadsFor(args).join("+")}`;
+  return `${leadHeadsFor(args).join("+")}|${accompanimentHeadsFor(args).join("+")}`;
 }
 
 /**
@@ -899,7 +916,7 @@ export async function separateClip({
     };
 
     await write("lead", leadHeads);
-    await write("rhythm", rhythmHeadsFor(shape), { lift: false });
+    await write("rhythm", accompanimentHeadsFor(shape), { lift: false });
     /*
      * Bass is its own mode rather than a special case of lead: on most of
      * these records the bassist is not the soloist, and hearing the walk on
@@ -972,14 +989,31 @@ export async function separateClip({
      * job is to be listened to once while somebody works out what happened.
      */
     const sources = [];
-    for (const head of STEM_HEADS) {
+    const rawHeads = STEM_HEADS.filter((head) => existsSync(stem(head)));
+
+    /*
+     * One gain for all six, and it is the gain the loudest of them asks for.
+     *
+     * The variants above are each lifted to a target, which is right for
+     * something that has to be playable next to the full mix. It is wrong
+     * here and was actively misleading: a head with nothing in it asks for
+     * the full twelve decibels, gets them, and hands back separation residue
+     * — a faint copy of the whole band — at the same loudness as a head that
+     * holds a real instrument. Every head then sounds like it contains
+     * everything, which is the opposite of what these are for.
+     *
+     * Lifting them all by the same amount keeps them in the proportion the
+     * separator left them in, so an empty head sounds empty and a head with
+     * the piano in it is obviously the loud one.
+     */
+    const lifts = await Promise.all(rawHeads.map((head) => measuredLift(stem(head))));
+    const commonLift = lifts.length > 0 ? Math.min(...lifts) : 0;
+
+    for (const head of rawHeads) {
       const raw = stem(head);
-      if (!existsSync(raw)) continue;
       const name = `${clipId}--source-${head}.mp3`;
       log(`encoding ${head}`);
-      await encodeStem([raw], path.join(AUDIO_DIR, name), {
-        lift: await measuredLift(raw),
-      });
+      await encodeStem([raw], path.join(AUDIO_DIR, name), { lift: commonLift });
       sources.push({
         head,
         audio: `/api/audio/${name}`,

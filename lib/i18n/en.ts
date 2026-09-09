@@ -158,7 +158,7 @@ export const en = {
   stemReview: {
     title: "Pulled apart",
     help:
-      "The meters only catch silence. Whether the soloist stem is the soloist, and whether the rhythm mix really lost the horn, is something only listening settles — so nothing here is dealt until it has a yes. Split it again after changing the soloist or the credits; a save that moves what goes into a stem starts that on its own.",
+      "The meters only catch silence. Whether the melody stem is the melody, and whether the accompaniment really lost it, is something only listening settles — so nothing here is dealt until it has a yes. Split it again after changing the soloist or the credits; a save that moves what goes into a stem starts that on its own.",
     notSplit: "This record has not been split yet. Run split-stems.",
     numbers: "{rel} dB under the mix · opening {onset} dB under it",
     empty: "Empty — never dealt",
@@ -246,7 +246,7 @@ export const en = {
     metadata: "Metadata",
     melody: "Who has the tune",
     melodyHelp:
-      "Whoever states the theme at the top, which is what the opening cut plays. Often more than one — two horns in harmony, or a horn the piano doubles. They are lifted out of the rhythm section for that cut, and nobody else is.",
+      "Whoever states the theme at the top, which is what the opening cut plays. Often more than one — two horns in harmony, or a horn the piano doubles. They are the melody for that cut, and everything else on the record is the accompaniment.",
     melodyGuessed:
       "Nobody named, so it is guessed from the credits: the singer if there is one, else the horns, else whatever the leader plays. Say it here and the guess stops.",
     verifiedHint:
