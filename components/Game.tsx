@@ -638,6 +638,7 @@ export function Game({
             onPlay={play}
             audioReady={audio.status === "ready"}
             audioFailed={audio.status === "error"}
+            audioAsleep={audio.asleep}
             onReport={() => setPanel("report")}
           />
         </section>

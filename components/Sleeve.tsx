@@ -32,12 +32,14 @@ interface SleeveProps {
   audioReady: boolean;
   /** The clip could not be loaded at all. */
   audioFailed: boolean;
+  /** The clip is fine; the browser's audio is not. */
+  audioAsleep: boolean;
   onReport: () => void;
 }
 
 export function Sleeve({
   solo, ladderMs, rung, revealed, playing, progress, playheadMs, onPlay, audioReady,
-  audioFailed, onReport,
+  audioFailed, audioAsleep, onReport,
 }: SleeveProps) {
   const unlocked = ladderMs[Math.min(rung, ladderMs.length - 1)];
   const amount = formatSnippet(unlocked).replace(" s", "");
@@ -107,6 +109,17 @@ export function Sleeve({
             <p className="type-eyebrow text-flame">{t("round.audioMissing")}</p>
             <p className="type-body mt-2 text-sm text-paper-dim">
               {t("round.audioMissingHelp")}
+            </p>
+          </div>
+        )}
+
+        {/* A clip that loaded and still made no sound is the browser's
+            doing, and says so rather than leaving a dead button. */}
+        {!audioFailed && audioAsleep && (
+          <div className="border-l-2 border-flame pl-4">
+            <p className="type-eyebrow text-flame">{t("round.audioAsleep")}</p>
+            <p className="type-body mt-2 text-sm text-paper-dim">
+              {t("round.audioAsleepHelp")}
             </p>
           </div>
         )}

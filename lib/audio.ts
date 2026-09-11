@@ -140,11 +140,104 @@ function preferPlaybackSession(): void {
   }
 }
 
+/* ------------------------------------------------------------------
+   Waiting on WebKit.
+
+   Every promise Web Audio hands back — resume(), close() — is one the
+   browser is free never to settle, and Safari takes that freedom for a
+   context whose audio session the system has taken away: the call is
+   accepted, the state stays "interrupted", and the promise sits there
+   forever. Code that awaits it never reaches the line that would have made
+   a sound, so the click does nothing at all — no error, no tab speaker, no
+   way out but a reload. That is the shape of the bug this file keeps
+   growing to fix.
+
+   So nothing here waits on one of those promises. They are fired and
+   forgotten, and what actually became true is read back off ctx.state.
+   ------------------------------------------------------------------ */
+
+/** How long a resume gets to show up in the state before it is disbelieved. */
+const RESUME_PATIENCE_MS = 400;
+
+/** How often to look, while waiting for that. */
+const RESUME_POLL_MS = 25;
+
+/** How long after a start to check that the clock ever reached it. */
+const STALL_WATCH_MS = 250;
+
+/**
+ * A context that will not sound again whatever is asked of it.
+ *
+ * "interrupted" is Safari's and is not in the spec's three states, which is
+ * why it has to be read as a bare string: the tab lost the audio session —
+ * to being hidden a few minutes, to another app, to a call — and the
+ * session is not handed back on request. A closed one is past arguing with.
+ */
+function isSpent(ctx: AudioContext): boolean {
+  const state = ctx.state as string;
+  return state === "closed" || state === "interrupted";
+}
+
+/** Ask a context to wake, without waiting to hear back. */
+function nudge(ctx: AudioContext): void {
+  try {
+    void ctx.resume().catch(() => {});
+  } catch {
+    /* some states refuse outright; the state is read back either way */
+  }
+}
+
+/**
+ * Give up on a context for good.
+ *
+ * Not awaited, for the same reason as resume: close() on a context the
+ * system has taken away can hang exactly as hard, and the whole point of
+ * this call is that we are no longer interested in what it has to say.
+ */
+function retire(ctx: AudioContext): void {
+  if (sharedContext === ctx) {
+    sharedContext = null;
+    clockProbe = null;
+  }
+  try {
+    void ctx.close().catch(() => {});
+  } catch {
+    /* already gone */
+  }
+}
+
+/** Watch the state for a resume to take, up to a point. */
+function whenRunning(ctx: AudioContext, patienceMs: number): Promise<boolean> {
+  if (ctx.state === "running") return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const deadline = performance.now() + patienceMs;
+    const look = () => {
+      if (ctx.state === "running") {
+        resolve(true);
+        return;
+      }
+      if (isSpent(ctx) || performance.now() >= deadline) {
+        resolve(false);
+        return;
+      }
+      window.setTimeout(look, RESUME_POLL_MS);
+    };
+    window.setTimeout(look, RESUME_POLL_MS);
+  });
+}
+
 /**
  * A context that was running when the tab was hidden — or when the phone
  * locked, or a call came in — comes back "suspended" or, on Safari,
  * "interrupted", and stays that way until something resumes it. Nothing in
  * a snippet player naturally does, so the next click is silent.
+ *
+ * Asking is worth a try, but only a try: without a gesture behind it Safari
+ * is entitled to ignore the request, and an interrupted session usually
+ * does. So the wake is checked rather than assumed, and a context that did
+ * not come back is dropped here, while there is time — which is what leaves
+ * the next click free to build a working one inside its own gesture instead
+ * of discovering the problem and having no gesture left to fix it with.
  */
 function attachWakeListeners(): void {
   if (wakeListenersAttached) return;
@@ -152,8 +245,26 @@ function attachWakeListeners(): void {
 
   const wake = () => {
     const ctx = sharedContext;
-    if (!ctx || ctx.state === "closed" || ctx.state === "running") return;
-    void ctx.resume().catch(() => {});
+    if (!ctx) return;
+    if (isSpent(ctx)) {
+      retire(ctx);
+      return;
+    }
+    if (ctx.state !== "running") nudge(ctx);
+
+    // A context can also come back from a sleep reporting "running" over a
+    // clock that has stopped. Here, off the critical path, that can be
+    // settled outright by watching the clock for a moment rather than
+    // inferred from a probe taken some unknown time ago.
+    const wasAt = ctx.currentTime;
+    window.setTimeout(() => {
+      if (sharedContext !== ctx) return;
+      if (isSpent(ctx)) {
+        retire(ctx);
+        return;
+      }
+      if (ctx.state === "running" && ctx.currentTime === wasAt) retire(ctx);
+    }, STALL_WATCH_MS);
   };
 
   document.addEventListener("visibilitychange", () => {
@@ -201,43 +312,53 @@ function clockIsStalled(ctx: AudioContext): boolean {
   return ctx.currentTime - previous.contextTime < wallElapsed / 10;
 }
 
-/** A context that is awake and whose clock is moving, rebuilt if need be. */
-async function readyContext(): Promise<AudioContext> {
+/**
+ * The context to play on, decided without waiting for anything.
+ *
+ * This part has to be synchronous. Safari grants a new context its audio
+ * session on the strength of the gesture being handled right now, and a
+ * gesture does not survive an await — a context built one await later
+ * starts suspended and stays there, which is how the old recovery managed
+ * to replace a dead context with a stillborn one. So giving up on a spent
+ * context and building its replacement both happen here, inside the click.
+ * Only the waiting to see whether a resume took is left to the caller.
+ */
+function contextForPlay(): AudioContext {
   let ctx = sharedAudioContext();
+
+  // Two ways to be awake on paper and silent in fact: a session the system
+  // took away, which refuses to come back however often it is asked, and a
+  // context that survived a sleep reporting "running" over a stopped clock.
+  // Neither raises an error and neither recovers by waiting. A context is
+  // cheap; the fix for both is to stop nursing this one.
+  if (isSpent(ctx) || clockIsStalled(ctx)) {
+    retire(ctx);
+    ctx = sharedAudioContext();
+  }
 
   if (ctx.state !== "running") {
     preferPlaybackSession();
-    try {
-      await ctx.resume();
-    } catch {
-      /* handled by the stall check below */
-    }
-  }
-
-  // Two ways to be awake on paper and silent in fact. A context whose
-  // session the system took away — speech, an assistant, a call, a pause
-  // from the machine's own media controls — reports "interrupted" or
-  // "suspended" and refuses to resume however often it is asked. And one
-  // that survived a long sleep can report "running" over a clock that has
-  // stopped. Neither raises an error, and neither recovers by waiting.
-  // A context is cheap; the fix for both is to stop nursing this one.
-  if (ctx.state !== "running" || clockIsStalled(ctx)) {
-    const dead = ctx;
-    sharedContext = null;
-    try {
-      await dead.close();
-    } catch {
-      /* already gone */
-    }
-    ctx = sharedAudioContext();
-    try {
-      await ctx.resume();
-    } catch {
-      /* nothing further to try */
-    }
+    nudge(ctx);
   }
 
   return ctx;
+}
+
+/** A context that is awake and whose clock is moving, rebuilt if need be. */
+async function readyContext(): Promise<AudioContext> {
+  const ctx = contextForPlay();
+  if (ctx.state === "running") return ctx;
+  if (await whenRunning(ctx, RESUME_PATIENCE_MS)) return ctx;
+
+  // A resume that neither took nor answered. Out here the gesture is spent
+  // and a new context is the weaker move it would have been inside one —
+  // but a context that will not wake is worth nothing, and this one at
+  // least might.
+  retire(ctx);
+  const fresh = sharedAudioContext();
+  nudge(fresh);
+  await whenRunning(fresh, RESUME_PATIENCE_MS);
+  return fresh;
 }
 
 export type AudioStatus = "idle" | "loading" | "ready" | "error";
@@ -248,6 +369,15 @@ export interface SoloAudio {
   /** 0–1 through the snippet currently sounding. */
   progress: number;
   buffer: AudioBuffer | null;
+  /**
+   * The last play could not get a working audio clock out of the browser,
+   * even after building a context from scratch.
+   *
+   * Everything that can be done from in here has been done at that point,
+   * so this exists to be said out loud: a screen that shows it turns a
+   * button that does nothing into a page that explains itself.
+   */
+  asleep: boolean;
   play: (offsetSeconds: number, durationSeconds: number) => void;
   stop: () => void;
 }
@@ -265,6 +395,7 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [asleep, setAsleep] = useState(false);
 
   // The gain belongs to whichever context is current; a rebuilt context
   // needs a new one, and the old one is dropped with it.
@@ -355,7 +486,12 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
       const decoded = buffer;
       const token = playTokenRef.current;
 
-      const schedule = (ctx: AudioContext) => {
+      /*
+       * `retried` is the budget for the check at the bottom: one replacement
+       * context per play. If a fresh context cannot sound either, the fault
+       * is not one more context away.
+       */
+      function schedule(ctx: AudioContext, retried: boolean) {
         const gain = gainFor(ctx);
 
         const offset = Math.max(0, Math.min(offsetSeconds, decoded.duration));
@@ -383,6 +519,7 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
         spanRef.current = { startedAt: now, duration };
         setIsPlaying(true);
         setProgress(0);
+        setAsleep(ctx.state !== "running");
 
         source.onended = () => {
           if (sourceRef.current !== source) return;
@@ -402,7 +539,47 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
           }
         };
         frameRef.current = requestAnimationFrame(tick);
-      };
+
+        /*
+         * Proof, after the fact, that the schedule took.
+         *
+         * Every line above succeeds on a context whose clock has stopped:
+         * the nodes connect, start() is accepted, nothing throws, and the
+         * sound never happens because the moment it was booked for never
+         * arrives. The clock is the only witness. If it has not reached the
+         * start by now — and the source is still sitting there unfinished,
+         * which on a live clock it would not be for a snippet this short —
+         * then this context is gone. Replace it and play the same snippet
+         * again, once, rather than leave a button that did nothing.
+         */
+        if (retried) return;
+        window.setTimeout(() => {
+          if (playTokenRef.current !== token) return;
+          if (sourceRef.current !== source) return;
+          if (ctx.state === "running" && ctx.currentTime > now) return;
+
+          retire(ctx);
+          try {
+            source.stop();
+          } catch {
+            /* it never started; that is the whole problem */
+          }
+          source.disconnect();
+          sourceRef.current = null;
+          spanRef.current = null;
+          if (frameRef.current !== null) {
+            cancelAnimationFrame(frameRef.current);
+            frameRef.current = null;
+          }
+
+          const fresh = sharedAudioContext();
+          nudge(fresh);
+          void whenRunning(fresh, RESUME_PATIENCE_MS).then(() => {
+            if (playTokenRef.current !== token) return;
+            schedule(fresh, true);
+          });
+        }, STALL_WATCH_MS);
+      }
 
       // A context built before the first gesture starts suspended, and a
       // suspended clock is frozen — scheduling against it puts the whole
@@ -412,7 +589,7 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
       void readyContext().then((ctx) => {
         // A stop, or a newer play, happened while we were waiting.
         if (playTokenRef.current !== token) return;
-        schedule(ctx);
+        schedule(ctx, false);
       });
     },
     [buffer, gainFor, stop, volume],
@@ -431,7 +608,7 @@ export function useSoloAudio(src: string | null, volume: number): SoloAudio {
     [],
   );
 
-  return { status, isPlaying, progress, buffer, play, stop };
+  return { status, isPlaying, progress, buffer, asleep, play, stop };
 }
 
 /** "0.1 s", "2 s", "20 s" — no trailing zeroes, no millisecond noise. */

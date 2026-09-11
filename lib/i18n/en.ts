@@ -54,6 +54,9 @@ export const en = {
     audioMissing: "This clip will not load",
     audioMissingHelp:
       "The file is not reachable from here. If this was just added, give it a moment; otherwise it needs fetching again in the library.",
+    audioAsleep: "Your browser has muted this tab",
+    audioAsleepHelp:
+      "A browser does this to a page that has been sitting open a while, and it will not undo it on its own. Reload the page and it plays again.",
     reportLink: "Something wrong with this one?",
   },
 
