@@ -2,7 +2,7 @@
 ================================================================================
 ANALYTICS
 ================================================================================
-Umami, self-hosted on analytics.leonardsima.de. The instance runs on the same
+Umami, self-hosted on analytics.leoshub.de. The instance runs on the same
 machine as the app, so nothing here ever leaves our own infrastructure.
 
 The website id and host sit in this file rather than in an env var: the id is
@@ -17,9 +17,9 @@ no admin identities. Counters and coarse categories only.
 ================================================================================
 */
 
-export const UMAMI_SRC = "https://analytics.leonardsima.de/script.js";
+export const UMAMI_SRC = "https://analytics.leoshub.de/script.js";
 export const UMAMI_WEBSITE_ID = "6a4a1fd1-75f9-48b9-acfe-f93f851bec6e";
-export const UMAMI_DOMAINS = "heardzz.leonardsima.de";
+export const UMAMI_DOMAINS = "heardzz.leoshub.de";
 
 type EventData = Record<string, string | number | boolean>;
 
